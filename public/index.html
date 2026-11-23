@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Salad Stories Subscriptions</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<meta name="theme-color" content="#1d5b34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Salad Orders">
+<style>
+#login{position:fixed;inset:0;z-index:50;background:#1d5b34;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,sans-serif}
+#login form{width:min(360px,100%);display:grid;gap:14px;text-align:center}
+#login h1{font:700 34px Outfit,system-ui,sans-serif;margin:0}
+#login p{margin:0;color:#cfe5d5}
+#login input{font:600 24px Inter,sans-serif;text-align:center;letter-spacing:.3em;min-height:56px;border-radius:12px;border:0;padding:8px;width:100%}
+#login button{font:700 18px Inter,sans-serif;min-height:54px;border-radius:12px;border:0;background:#d6ec7a;color:#13241a;cursor:pointer}
+#login .err{color:#ffd2c7;min-height:1.4em;font-weight:600}
+#netbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:#e5482d;color:#fff;text-align:center;padding:8px;font:600 14px Inter,sans-serif}
+</style>
+<script>
+(()=>{
+  const KEY='ss-team-pin';
+  let pin='';try{pin=localStorage.getItem(KEY)||''}catch(e){}
+  let ready,readyRes;ready=new Promise(r=>readyRes=r);
+  const api=async(path,opt={})=>{const r=await fetch('/api/'+path,{...opt,headers:{'content-type':'application/json','x-team-pin':pin,...(opt.headers||{})}});
+    if(r.status===401){try{localStorage.removeItem(KEY)}catch(e){}showLogin('Please enter the team PIN again');throw {code:'revoked',message:'login'}}
+    if(!r.ok){let m='';try{m=(await r.json()).error}catch(e){}throw {code:'unavailable',message:m||r.statusText}}
+    return r.json()};
+  function netbar(on){let b=document.getElementById('netbar');if(on&&!b){b=document.createElement('div');b.id='netbar';b.textContent='No internet — orders will update when the connection is back';document.body.append(b)}if(!on&&b)b.remove()}
+  /* change watcher: one cheap version check, then reload only what changed */
+  let version=null;const watchers=new Set();
+  async function tick(){try{const v=(await api('version')).version;netbar(false);if(v!==version){version=v;for(const w of watchers)w()}}catch(e){if(e&&e.code!=='revoked')netbar(true)}}
+  const kick=()=>{for(const w of watchers)w()};
+  let timer=null;function startWatch(){if(timer)return;tick();timer=setInterval(tick,4000)}
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')tick()});
+  const snapDoc=(id,data)=>({id,exists:data!==undefined,data:()=>data,metadata:{fromCache:false,hasPendingWrites:false}});
+  const rid=()=>Math.random().toString(36).slice(2,12)+Date.now().toString(36).slice(-6);
+  function docRef(path){const [coll,id]=path.split('/');return{id,path,
+    get:async()=>{const r=await api(`doc/${coll}/${id}`);return snapDoc(id,r.exists?r.data:undefined)},
+    set:async data=>{await api(`doc/${coll}/${id}`,{method:'PUT',body:JSON.stringify({data})});kick()},
+    update:async data=>{try{await api(`doc/${coll}/${id}`,{method:'PATCH',body:JSON.stringify({data})})}catch(e){if(/Not found/.test(e.message||''))throw {code:'invalid_argument',message:'missing'};throw e}kick()},
+    delete:async()=>{await api(`doc/${coll}/${id}`,{method:'DELETE'});kick()},
+    onSnapshot(next,err){let last=null,live=true;const run=async()=>{if(!live)return;try{const r=await api(`doc/${coll}/${id}`);const s=JSON.stringify(r);if(s!==last){last=s;next(snapDoc(id,r.exists?r.data:undefined))}}catch(e){}};watchers.add(run);run();startWatch();return()=>{live=false;watchers.delete(run)}}}}
+  function collRef(coll){return{path:coll,doc:id=>docRef(`${coll}/${id||rid()}`),add:async data=>{const r=docRef(`${coll}/${rid()}`);await r.set(data);return r},
+    onSnapshot(next,err){let last=null,live=true;const run=async()=>{if(!live)return;try{const r=await api(`coll/${coll}`);const s=JSON.stringify(r.docs);if(s!==last){last=s;const docs=r.docs.map(d=>snapDoc(d.id,d.data));next({docs,size:docs.length,empty:!docs.length,docChanges:()=>[],metadata:{fromCache:false,hasPendingWrites:false}})}}catch(e){}};watchers.add(run);run();startWatch();return()=>{live=false;watchers.delete(run)}}}}
+  const DB={doc:docRef,collection:collRef};
+  const DL={save:async({filename,data})=>{const blob=data instanceof Blob?data:new Blob([data],{type:'application/pdf'});const file=new File([blob],filename,{type:'application/pdf'});
+    try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:filename});return{status:'saved'}}}catch(e){if(e&&e.name==='AbortError')throw {code:'declined',message:'cancelled'}}
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);return{status:'saved'}}};
+  window.claude={use:async name=>{if(name==='db'){await ready;return DB}if(name==='user'){await ready;return{can:async()=>true,id:async()=>'team'}}if(name==='downloads')return DL;return null}};
+  function showLogin(msg){let el=document.getElementById('login');if(!el){el=document.createElement('div');el.id='login';el.innerHTML=`<form><h1>Salad Stories</h1><p>Orders, bills and kitchen prep</p><input id="pinIn" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Team PIN" aria-label="Team PIN"><button>Open app</button><div class="err" id="pinErr"></div></form>`;document.body.append(el);
+      el.querySelector('form').onsubmit=async e=>{e.preventDefault();const v=el.querySelector('#pinIn').value.trim();if(!v)return;const r=await fetch('/api/login',{method:'POST',headers:{'x-team-pin':v}}).catch(()=>null);
+        if(r&&r.ok){pin=v;try{localStorage.setItem(KEY,v)}catch(e){}el.remove();readyRes();}else el.querySelector('#pinErr').textContent=r?'Wrong PIN — try again':'No internet connection'}}
+    el.querySelector('#pinErr').textContent=msg||'';setTimeout(()=>el.querySelector('#pinIn').focus(),50)}
+  const boot=async()=>{if(pin){const r=await fetch('/api/login',{method:'POST',headers:{'x-team-pin':pin}}).catch(()=>null);if(r&&r.ok){readyRes();return}if(r&&r.status===401){pin='';try{localStorage.removeItem(KEY)}catch(e){}}else if(!r){readyRes();return}}showLogin()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: practical, fast, kitchen-floor clear
+   IDEA: the kitchen order ticket (KOT) and the paper bill
+   PICTURE: the live ticket rail; the bill drawn as a torn receipt
+   COLOUR and TYPE: leaf green field, lime support, tomato accent; Outfit + Inter
+   LAYOUT: tabs Kitchen / Orders / New; slot columns that stack on phones */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0e1a12);--ink:light-dark(#13241a,#e9f3ec);--mut:light-dark(#4f6357,#a6bbae);--g:light-dark(#1d5b34,#2f7d4a);--gl:light-dark(#eef6e4,#16281c);--lime:#d6ec7a;--tom:#e5482d;--card:light-dark(#fff,#132219);--ln:light-dark(#d9e4dc,#2a3d31)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:Outfit,system-ui,sans-serif;margin:0;line-height:1.1;text-wrap:balance}
+.top{background:var(--g);color:#fff;padding:18px max(4vw,14px) 0}
+.top h1{font-size:clamp(24px,4vw,34px)}.top p{margin:2px 0 14px;color:#cfe5d5;font-size:15px}
+nav{display:flex;gap:6px;flex-wrap:wrap}
+nav a{color:#fff;text-decoration:none;padding:11px 16px;border-radius:12px 12px 0 0;font-weight:600;min-height:44px}
+nav a.on{background:var(--bg);color:var(--ink)}nav a .n{background:var(--tom);color:#fff;border-radius:99px;padding:1px 8px;margin-left:6px;font-size:13px}
+.band{padding:22px max(4vw,14px) 48px;max-width:1240px;margin:0 auto}
+.note{background:#fff3cd;color:#5a4300;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:15px}.note:empty{display:none}
+button,.btn{font:600 15px Inter,sans-serif;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--ln);background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+button.pri,.btn.pri{background:var(--g);border-color:var(--g);color:#fff}button.hot{background:var(--tom);border-color:var(--tom);color:#fff}.btn.wa{background:#1fa855;border-color:#1fa855;color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.alerts{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--gl);border-radius:14px;padding:12px 14px;margin-bottom:18px}
+.alerts p{margin:0;flex:1 1 220px;font-size:15px;color:var(--mut)}
+.rail{border-top:6px solid var(--ink);padding-top:14px;margin-bottom:26px}
+.rail h2{font-size:22px;margin-bottom:10px}
+.tks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:14px}
+.tk{background:var(--card);border:1px solid var(--ln);border-radius:4px 4px 12px 12px;padding:14px 14px 12px;position:relative;box-shadow:0 2px 0 var(--ln)}
+.tk::before{content:"";position:absolute;left:0;right:0;top:-1px;height:6px;background:radial-gradient(circle at 6px 0,var(--bg) 4px,transparent 4.5px) 0 0/12px 6px repeat-x}
+.tk.new{border:2px solid var(--tom);animation:pop .6s ease 2}
+@keyframes pop{50%{transform:translateY(-4px)}}@media(prefers-reduced-motion:reduce){.tk.new{animation:none}}
+.tag{display:inline-block;font:700 12px Inter;background:var(--tom);color:#fff;border-radius:6px;padding:2px 7px;margin-bottom:6px}.tag.up{background:#c77700}
+.li+.li{border-top:1px dashed var(--ln);margin-top:8px;padding-top:8px}
+.tk-h{display:flex;justify-content:space-between;gap:8px;font-family:Outfit;font-size:20px;font-weight:700}
+.q{color:var(--tom);white-space:nowrap}.cu{margin:6px 0 0;background:#fffbe0;color:#4a3d00;border-left:4px solid var(--lime);padding:6px 8px;font-size:15px;font-weight:600}
+.who,.meta{margin:8px 0 0;font-size:14px;color:var(--mut)}.who{color:var(--ink);font-weight:600}
+.unpaid{color:var(--tom);font-weight:700}
+.tk .act{margin-top:10px;display:flex;gap:8px}
+.chk{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:600;min-height:44px;cursor:pointer}
+.chk input{width:24px;height:24px;accent-color:var(--g)}
+.tk.done{opacity:.55}.tk.done .tk-h b{text-decoration:line-through}
+.tally{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.tally span{background:var(--lime);color:#13241a;border-radius:99px;padding:6px 12px;font-weight:600;font-size:15px}
+.slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.slot h3{font-size:19px;padding-bottom:8px;border-bottom:2px solid var(--ln);margin-bottom:12px}
+.slot .tks{grid-template-columns:1fr}.empty{color:var(--mut);font-size:15px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--gl);border-radius:14px;padding:12px 14px}.stat b{display:block;font:700 clamp(26px,4vw,34px) Outfit}.stat span{font-size:14px;color:var(--mut)}
+.dayhead{font-size:20px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;font-size:13px;color:var(--mut);font-weight:600;padding:8px;border-bottom:2px solid var(--ln)}
+td{padding:10px 8px;border-bottom:1px solid var(--ln);vertical-align:top}
+td small{display:block;color:var(--mut);font-size:13px}
+.pill{display:inline-block;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600;white-space:nowrap}
+.p-ok{background:#d9f2df;color:#14532d}.p-no{background:#fde0da;color:#8a1f0c}.p-w{background:#fff0c2;color:#6b4b00}.p-x{background:#e6e9e7;color:#47524b}
+.rowb{display:flex;gap:6px;flex-wrap:wrap}.rowb button{min-height:38px;padding:0 10px;font-size:14px}
+input,select,textarea{font:16px Inter,sans-serif;width:100%;min-height:46px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--card);color:var(--ink)}
+form{max-width:780px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+.f{display:flex;flex-direction:column;gap:5px}.f.full{grid-column:1/-1}
+label.l,.l{font-size:14px;font-weight:600}
+.days{display:flex;gap:6px;flex-wrap:wrap}.days label{display:flex;align-items:center;gap:6px;border:1px solid var(--ln);border-radius:10px;padding:0 12px;min-height:44px;cursor:pointer}
+.days input{width:18px;height:18px;min-height:0;accent-color:var(--g)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}.seg label{flex:1;min-width:90px}
+.seg input{position:absolute;opacity:0;width:1px;height:1px}
+.seg span{display:flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--ln);border-radius:10px;font-weight:600;cursor:pointer}
+.seg input:checked+span{background:var(--g);color:#fff;border-color:var(--g)}.seg input:focus-visible+span{outline:3px solid var(--lime)}
+.item{border:1px solid var(--ln);border-radius:12px;padding:12px;display:grid;gap:8px;background:var(--gl)}
+.irow{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px}
+.irow button{padding:0}
+.iqp{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:8px;align-items:end}
+.iqp label{display:grid;gap:4px;font-size:13px;font-weight:600}.iqp .line{font:700 18px Outfit;padding-bottom:10px;white-space:nowrap}
+details.f summary{cursor:pointer;font-weight:600;font-size:14px;min-height:44px;display:flex;align-items:center;color:var(--mut)}
+.rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.panel{border:1px solid var(--ln);border-radius:14px;padding:14px 16px}.panel h3{font-size:19px;margin-bottom:12px}.panel.wide{grid-column:1/-1}
+.hb{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) auto;gap:10px;align-items:center;padding:5px 0;font-size:15px}
+.hb span{overflow-wrap:anywhere;line-height:1.25}.hb .tr{height:14px;background:var(--gl);border-radius:4px;overflow:hidden}.hb .tr i{display:block;height:100%;background:var(--g);border-radius:4px}.hb b{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+.hb:first-child .tr i{background:var(--tom)}
+.cols{display:flex;align-items:flex-end;gap:3px;height:180px;border-bottom:2px solid var(--ln)}
+.cols div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:11px;color:var(--mut)}
+.cols i{display:block;width:100%;background:var(--g);border-radius:3px 3px 0 0;min-height:2px}.cols div.we i{background:var(--ln)}.cols div.hi i{background:var(--tom)}
+.xl{display:flex;gap:3px;font-size:11px;color:var(--mut)}.xl span{flex:1;text-align:center}
+.sub{color:var(--mut);font-size:15px;margin:-6px 0 16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{min-height:36px;padding:0 10px;font-size:14px;font-weight:500;border-radius:99px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.cal .h{font-size:12px;color:var(--mut);text-align:center;font-weight:600}
+.cal button{min-height:44px;padding:0;font-size:15px;flex-direction:column;line-height:1.1}.cal button small{font-size:10px;color:var(--mut)}.cal button.on{background:var(--g);border-color:var(--g);color:#fff}.cal button.on small{color:#d6ec7a}
+.start{position:fixed;inset:0;z-index:11;background:var(--g);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}.start .bigin{gap:18px}.start h2{font-size:clamp(28px,6vw,44px)}.start button{background:#fff;color:var(--g);border:0;font-size:20px;min-height:64px}
+.sg{display:grid;gap:6px}.sg+.sg{border-top:1px solid var(--ln);padding-top:10px}.sg>b{font:700 16px Outfit}
+.daysend{background:var(--gl);border-radius:14px;padding:12px 14px;margin-bottom:16px;display:grid;gap:8px}.daysend summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--mut);min-height:36px;display:flex;align-items:center}.daysend pre{white-space:pre-wrap;font:14px/1.5 Inter,sans-serif;background:var(--card);border-radius:10px;padding:10px 12px;margin:6px 0 0}
+.dm{display:grid;gap:6px;max-height:520px;overflow-y:auto}.dmr{display:grid;grid-template-columns:7.2em minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px 6px 12px;border:1px solid var(--ln);border-radius:10px;font-size:15px}.dmr.ch{border:2px solid var(--tom)}.dmr .dms{color:var(--mut)}.dmr.ch .dms{color:var(--ink);font-weight:600}.dmr .rowb button{min-height:38px}.dme{grid-column:1/-1;display:grid;gap:8px;padding:6px 0}
+@media(max-width:600px){.dmr{grid-template-columns:minmax(0,1fr) auto}.dmr .dms{grid-column:1/-1;grid-row:2}}
+.prev{background:var(--g);color:#fff;border-radius:12px;padding:12px 14px;font-weight:600}
+.prev b{font:700 24px Outfit}
+.ov{position:fixed;inset:0;background:rgba(10,20,14,.6);z-index:8;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
+.ovin{width:min(420px,100%)}
+.rc{background:#fff;color:#16211a;padding:22px 20px 26px;font:15px/1.5 Inter,sans-serif;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.rc::after{content:"";position:absolute;left:0;right:0;bottom:-10px;height:10px;background:linear-gradient(-45deg,transparent 7px,#fff 0) 0 0/14px 10px,linear-gradient(45deg,transparent 7px,#fff 0) 0 0/14px 10px;background-repeat:repeat-x}
+.rc h3{font-size:24px;color:#1d5b34;text-align:center}.rc .c{text-align:center;color:#4f6357;font-size:13px;margin:0 0 12px}
+.rc .r{display:flex;justify-content:space-between;gap:10px}.rc .r span:last-child{white-space:nowrap;text-align:right}
+.rc hr{border:0;border-top:1px dashed #9aa9a0;margin:10px 0}.rc .tot{font:700 20px Outfit}.rc small{color:#4f6357;display:block}
+.ovin .bar{margin-top:16px}.kbox{background:#fff;color:#16211a;border-radius:14px;padding:14px;display:grid;gap:8px;margin:0 0 18px}.kbox small{color:#4f6357;font-size:13px}.kbox+.rc,.rc+.kbox{margin-top:0}.rc+.kbox{margin-top:28px}
+.big{position:fixed;inset:0;z-index:10;background:var(--tom);color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;animation:flash 1s steps(2) infinite}@keyframes flash{50%{background:#b8260f}}@media(prefers-reduced-motion:reduce){.big{animation:none}}.bigin{width:min(520px,100%);display:grid;gap:14px;text-align:center}.bt{font:700 clamp(40px,10vw,64px)/1 Outfit;margin:0}#bigList p{margin:0;font-size:19px;font-weight:600}#bigList small{display:block;font-size:16px;font-weight:500;opacity:.9}.big button{background:#fff;color:#b8260f;border:0;font-size:20px;min-height:60px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;max-width:92vw;z-index:9;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+[hidden]{display:none!important}
+@media(max-width:820px){.slots{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){.rgrid{grid-template-columns:1fr}}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.iqp{grid-template-columns:80px minmax(0,1fr)}.iqp .line{grid-column:1/-1;padding:0}.hb{grid-template-columns:minmax(0,7em) minmax(0,1fr) auto}table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--ln)}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:7em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:6.5em;margin-inline-start:-7em;color:var(--mut);font-size:13px}.stack td:empty{display:none}}
+</style><script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script></head><body>
+<header class="top"><h1>Salad Stories</h1><p>Orders, bills and kitchen prep</p>
+<nav><a href="#kitchen" id="t-kitchen">Kitchen<span class="n" id="newCount" hidden></span></a><a href="#subscriptions" id="t-subscriptions">Orders</a><a href="#reports" id="t-reports">Reports</a><a href="#new" id="t-new">+ New order</a></nav></header>
+<main class="band">
+<div class="note" id="note">Connecting…</div>
+
+<section id="v-kitchen">
+  <div class="alerts"><div class="f" style="flex:1 1 220px"><label class="l" for="kPhone">Kitchen WhatsApp (cook akka)</label><input id="kPhone" inputmode="tel" placeholder="e.g. 98765 43210"></div><div class="f" style="flex:1 1 220px"><label class="l" for="dPhone">Delivery person WhatsApp</label><input id="dPhone" inputmode="tel" placeholder="e.g. 98765 43210"></div><button id="kSave" style="align-self:flex-end">Save numbers</button></div>
+  <div class="alerts"><p id="alertTxt">Keep this page open on the kitchen phone or tablet. Turn on alerts to hear a chime when an order is added or changed.</p><button class="hot" id="sound">Turn on order alerts</button></div>
+  <div class="rail" id="railBox"><h2>New and changed orders</h2><div class="tks" id="rail"></div></div>
+  <div class="bar"><h2 style="font-size:22px;margin-right:auto" id="prepTitle">Today's prep</h2><button id="dToday">Today</button><button id="dTom">Tomorrow</button><input type="date" id="prepDate" style="width:auto"></div>
+  <div class="daysend">
+    <div class="sg"><b>Cook akka — kitchen list</b><div class="bar" style="margin:0"><a class="btn wa" id="waDayK" href="#" target="_blank" rel="noopener">Full day</a><a class="btn" id="waLK" href="#" target="_blank" rel="noopener">Lunch</a><a class="btn" id="waDK" href="#" target="_blank" rel="noopener">Dinner</a><button type="button" data-copy="dayPrevK">Copy</button></div><details><summary>Preview</summary><pre id="dayPrevK"></pre></details></div>
+    <div class="sg"><b>Delivery list — addresses</b><div class="bar" style="margin:0"><a class="btn wa" id="waDlK" href="#" target="_blank" rel="noopener">Full day</a><a class="btn" id="waDlLK" href="#" target="_blank" rel="noopener">Lunch</a><a class="btn" id="waDlDK" href="#" target="_blank" rel="noopener">Dinner</a><button type="button" data-copy="dlPrevK">Copy</button></div><details><summary>Preview</summary><pre id="dlPrevK"></pre></details></div>
+    <div class="sg"><b>Follow-ups — payment pending &amp; renewals</b><div class="bar" style="margin:0"><a class="btn wa" id="waFuK" href="#" target="_blank" rel="noopener">Send follow-up list</a><button type="button" data-copy="fuPrevK">Copy</button></div><details><summary>Preview</summary><pre id="fuPrevK"></pre></details></div>
+  </div>
+  <div class="tally" id="tally"></div>
+  <div class="slots" id="slots"></div>
+</section>
+
+<section id="v-subscriptions" hidden>
+  <div class="stats" id="stats"></div>
+  <div class="bar"><label class="l" for="onDate" style="white-space:nowrap">Orders on</label><input type="date" id="onDate" style="width:auto"><button id="oToday">Today</button><button id="oAll">All dates</button></div>
+  <div id="oSend"><div class="daysend">
+    <div class="sg"><b>Cook akka — kitchen list</b><div class="bar" style="margin:0"><a class="btn wa" id="waDayO" href="#" target="_blank" rel="noopener">Full day</a><a class="btn" id="waLO" href="#" target="_blank" rel="noopener">Lunch</a><a class="btn" id="waDO" href="#" target="_blank" rel="noopener">Dinner</a><button type="button" data-copy="dayPrevO">Copy</button></div><details><summary>Preview</summary><pre id="dayPrevO"></pre></details></div>
+    <div class="sg"><b>Delivery list — addresses</b><div class="bar" style="margin:0"><a class="btn wa" id="waDlO" href="#" target="_blank" rel="noopener">Full day</a><a class="btn" id="waDlLO" href="#" target="_blank" rel="noopener">Lunch</a><a class="btn" id="waDlDO" href="#" target="_blank" rel="noopener">Dinner</a><button type="button" data-copy="dlPrevO">Copy</button></div><details><summary>Preview</summary><pre id="dlPrevO"></pre></details></div>
+    <div class="sg"><b>Follow-ups — payment pending &amp; renewals</b><div class="bar" style="margin:0"><a class="btn wa" id="waFuO" href="#" target="_blank" rel="noopener">Send follow-up list</a><button type="button" data-copy="fuPrevO">Copy</button></div><details><summary>Preview</summary><pre id="fuPrevO"></pre></details></div>
+  </div></div>
+  <div class="bar"><input id="q" placeholder="Search name, phone, location or bowl" style="flex:2 1 260px"><select id="filt" style="flex:1 1 170px"><option value="all">All</option><option value="active">Active now</option><option value="unpaid">Payment pending</option><option value="soon">Ending in 3 days</option><option value="ended">Ended</option><option value="paused">Paused</option></select></div>
+  <h3 class="dayhead" id="dayhead"></h3>
+  <table class="stack"><thead><tr><th>Customer</th><th>Location</th><th>Plan</th><th>Timing</th><th>Bowls</th><th>Payment</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="empty" id="noRows" hidden></p>
+</section>
+
+<section id="v-reports" hidden>
+  <div class="bar"><div class="seg" style="flex:0 1 240px"><label><input type="radio" name="rmode" value="day"><span>Daily</span></label><label><input type="radio" name="rmode" value="month" checked><span>Monthly</span></label></div><input type="date" id="rDay" style="width:auto" hidden><input type="month" id="rMonth" style="width:auto"></div>
+  <h2 class="dayhead" id="rTitle" style="font-size:26px"></h2>
+  <p class="sub" id="rSub"></p>
+  <div class="stats" id="rStats"></div>
+  <div class="rgrid">
+    <div class="panel wide"><h3 id="rChartT">Bowls each day</h3><div id="rChart"></div></div>
+    <div class="panel"><h3>Top bowls</h3><div id="rBowls"></div></div>
+    <div class="panel"><h3>Top customers</h3><div id="rCust"></div></div>
+    <div class="panel"><h3>By timing</h3><div id="rSlot"></div></div>
+    <div class="panel"><h3>Orders taken by plan</h3><div id="rPlan"></div></div>
+  </div>
+  <p class="sub" style="margin-top:16px">Sales are counted on the days bowls are delivered. Paused orders are left out.</p>
+</section>
+
+<section id="v-new" hidden>
+  <h2 style="font-size:26px;margin-bottom:16px" id="formTitle">New order</h2>
+  <form id="form" novalidate><div class="grid">
+    <div class="f"><label class="l" for="name">Customer name *</label><input id="name" name="name" autocomplete="off"></div>
+    <div class="f"><label class="l" for="phone">Phone (for WhatsApp bill)</label><input id="phone" name="phone" inputmode="tel"></div>
+    <div class="f full"><label class="l" for="location">Location / address</label><input id="location" name="location" placeholder="e.g. Tidel Park, Block B, 4th floor"></div>
+    <div class="f full"><span class="l">Plan *</span><div class="seg"><label><input type="radio" name="plan" value="Daily"><span>Daily</span></label><label><input type="radio" name="plan" value="Weekly" checked><span>Weekly</span></label><label><input type="radio" name="plan" value="Monthly"><span>Monthly</span></label><label><input type="radio" name="plan" value="Custom"><span>Custom</span></label></div></div>
+    <div class="f"><label class="l" for="start">Start date *</label><input type="date" id="start" name="start"></div>
+    <div class="f"><label class="l" for="end">End date</label><input type="date" id="end" name="end"></div>
+    <div class="f full" id="calBox" hidden><span class="l">Delivery dates — tap a date to add or remove it</span><div class="bar" style="margin:0"><button type="button" id="calAlt">Alternate days</button><button type="button" id="calWk">Weekdays only</button><button type="button" id="calClr">Clear</button><b id="calN" style="margin-left:auto"></b></div><div class="cal" id="cal"></div></div>
+    <div class="f full" id="daysBox"><span class="l">Delivery days</span><div class="days" id="days"></div></div>
+    <div class="f full"><span class="l">Timing</span><div class="seg"><label><input type="radio" name="slot" value="Lunch" checked><span>Lunch</span></label><label><input type="radio" name="slot" value="Dinner"><span>Dinner</span></label></div></div>
+    <div class="f"><label class="l" for="time">Delivery time</label><select id="time" name="time"></select></div>
+    <div class="f"></div>
+    <div class="f full"><span class="l">Bowls each day * <small style="font-weight:400;color:var(--mut)">— bowl, qty, price per bowl, then customisation</small></span><div id="items" style="display:grid;gap:10px"></div><button type="button" id="addItem" style="justify-self:start">+ Add another bowl</button></div>
+    <div class="f full" id="dmBox" hidden><span class="l">Different bowl on some days? <small style="font-weight:400;color:var(--mut)">— e.g. Chicken today, Paneer tomorrow. Tap Change on that day.</small></span><div id="dm" class="dm"></div></div>
+    <div class="f full"><span class="l">Payment</span><div class="seg"><label><input type="radio" name="paid" value="yes"><span>Received</span></label><label><input type="radio" name="paid" value="no" checked><span>Pending</span></label></div></div>
+    <div class="f"><label class="l" for="payMode">Paid by</label><select id="payMode" name="payMode"><option>GPay / UPI</option><option>Cash</option><option>Bank transfer</option><option>Card</option></select></div>
+    <details class="f" id="discBox"><summary>+ Give a discount (optional)</summary><label class="l" for="disc">Discount %</label><input type="number" id="disc" name="disc" min="0" max="100" step="0.5" inputmode="decimal" placeholder="e.g. 10"></details>
+    <div class="f full prev" id="prev"></div>
+  </div>
+  <div class="bar" style="margin-top:20px"><button class="pri" type="submit" id="saveBtn">Save, make bill, send to kitchen</button><button type="button" id="cancelEdit">Cancel</button></div>
+  </form>
+</section>
+</main>
+<div class="ov" id="ov" hidden><div class="ovin"><div class="kbox" id="kbox"><b>1. Tell the kitchen</b><a class="btn wa" id="waKitchen" href="#" target="_blank" rel="noopener">Send order to kitchen WhatsApp</a><small id="kNote"></small></div><div class="rc" id="rc"></div><div class="kbox"><b>2. Send the bill to the customer</b><button class="pri" id="pdfBill">Share bill as PDF</button><small id="pdfHint">Your phone's share menu opens — choose WhatsApp, then the customer. On a computer the PDF downloads; attach it in WhatsApp.</small><a class="btn" id="waChat" href="#" target="_blank" rel="noopener">Open customer's WhatsApp chat</a></div><div class="bar"><button id="closeBill">Close</button></div></div></div>
+<div class="start" id="startOv" hidden><div class="bigin"><h2>Kitchen alerts</h2><p style="margin:0;font-size:18px">Tap once to switch on the order sound. New orders will then ring and flash here automatically.</p><button id="startBtn">Tap to start alerts</button></div></div>
+<div class="big" id="big" hidden role="alertdialog" aria-live="assertive"><div class="bigin"><p class="bt">NEW ORDER</p><div id="bigList"></div><button id="bigOk">Got it — start prep</button></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+{
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const SLOTS=['Lunch','Dinner'],DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],ORDER=[1,2,3,4,5,6,0];
+const FF=new Proxy({},{get:(_,k)=>document.getElementById(k)});
+const BOWLS=['Chicken Energizer','Paneer Power','Eggcellent','Egg Sprouts Bliss','Hair & Glow Bowl','FruitBliss'];
+const CHIPS=['No tomato','No capsicum','No onion','No cucumber','Less spicy','Dressing on side','Extra protein'];
+let kitchenPhone='',deliveryPhone='',lastSaved=null,db=null,subs=[],prep={},prepUnsub=null,first=true,seen=new Set(),ac=null,editId=null,busy=false,prepDate='',onDate='',delArm=null,billSub=null;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iso=d=>new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const today=()=>iso(new Date());
+const addDays=(s,n)=>{const d=new Date(s+'T00:00');d.setDate(d.getDate()+n);return iso(d)};
+const endFor=(p,s)=>{if(!s)return'';if(p==='Daily')return s;if(p==='Custom')return addDays(s,29);if(p==='Weekly')return addDays(s,6);const d=new Date(s+'T00:00');d.setMonth(d.getMonth()+1);d.setDate(d.getDate()-1);return iso(d)};
+const fmt=s=>s?new Date(s+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'';
+const rs=n=>'₹'+Number(n||0).toLocaleString('en-IN');
+const t12=t=>{if(!t)return'';const[h,m]=t.split(':');return `${(+h%12)||12}:${m} ${+h<12?'am':'pm'}`};
+const note=t=>{$('#note').textContent=t};
+let tt;const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('on'),3500)};
+const days=s=>Array.isArray(s.days)&&s.days.length?s.days:[1,2,3,4,5];
+const items=s=>(Array.isArray(s.items)&&s.items.length?s.items:[{bowl:s.bowl||'',qty:s.qty||1,price:0,custom:s.custom||''}]).map(i=>({...i,bowl:canon(i.bowl)}));
+const qtyOf=s=>items(s).reduce((n,i)=>n+(+i.qty||1),0);
+const itemsOn=(s,d)=>{const o=s.dayItems&&d&&s.dayItems[d];return Array.isArray(o)&&o.length?o.map(i=>({...i,bowl:canon(i.bowl)})):items(s)};
+const qtyOn=(s,d)=>itemsOn(s,d).reduce((n,i)=>n+(+i.qty||1),0);
+const priceOf=a=>a.reduce((t,i)=>t+(+i.qty||1)*(+i.price||0),0);
+const changes=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>onDay(s,d)).sort().map(d=>[d,itemsOn(s,d)]):[];
+const itxt=a=>a.map(i=>`${i.bowl} ×${+i.qty||1}${i.custom?' ('+i.custom+')':''}`).join(' + ');
+const nChanged=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>onDay(s,d)).length:0;
+function onDay(s,d){if(s.plan==='Custom')return Array.isArray(s.dates)&&s.dates.includes(d);if(!s.start||d<s.start||(s.end&&d>s.end))return false;return s.plan==='Daily'||days(s).includes(new Date(d+'T00:00').getDay())}
+const patTxt=s=>s.plan==='Daily'?'':s.plan==='Custom'?` · ${(s.dates||[]).length} chosen days${isAlt(s.dates)?' (alternate)':''}`:' · '+ORDER.filter(x=>days(s).includes(x)).map(x=>DN[x]).join(' ');
+const isAlt=a=>Array.isArray(a)&&a.length>2&&a.every((d,i)=>!i||addDays(a[i-1],2)===d);
+const runsOn=(s,d)=>!s.paused&&onDay(s,d);
+function datesOf(s){if(s.plan==='Daily')return s.start?[s.start]:[];if(s.plan==='Custom')return [...(s.dates||[])].sort();const r=[];for(let d=s.start,k=0;d&&k<400&&d<=(s.end||s.start);k++,d=addDays(d,1))if(onDay(s,d))r.push(d);return r}
+function nDays(s){if(s.plan==='Daily')return 1;if(s.plan==='Custom')return (s.dates||[]).length;let n=0,d=s.start;for(let k=0;k<400&&d&&d<=(s.end||s.start);k++,d=addDays(d,1))if(onDay(s,d))n++;return n}
+function money(s){const n0=nDays(s);if(!(Array.isArray(s.items)&&s.items.length)&&+s.amount){const a=+s.amount;return{perDay:n0?a/n0:a,n:n0,sub:a,pct:0,disc:0,total:a}}const perDay=priceOf(items(s)),n=n0,sub=s.dayItems?datesOf(s).reduce((t,d)=>t+priceOf(itemsOn(s,d)),0):perDay*n,pct=s.discPct!=null?Math.min(100,Math.max(0,+s.discPct||0)):0,disc=s.discPct!=null?Math.round(sub*pct/100):Math.min(+s.disc||0,sub);return{perDay,n,sub,pct,disc,total:sub-disc}}
+const dayVal=(s,d)=>{const m=money(s);if(!m.sub)return 0;const raw=(Array.isArray(s.items)&&s.items.length)?priceOf(itemsOn(s,d)):m.perDay;return raw*m.total/m.sub};
+function state(s){const t=today();if(s.paused)return['Paused','p-x'];if(s.end&&s.end<t)return['Ended','p-x'];if(s.start>t)return['Starts '+fmt(s.start),'p-w'];if(s.end&&s.plan!=='Daily'&&s.end<=addDays(t,3))return['Ends '+fmt(s.end),'p-w'];return['Active','p-ok']}
+const billNo=s=>'SS-'+iso(new Date(s.createdAt||Date.now())).slice(2).replace(/-/g,'')+'-'+String(s.id||'').slice(-4).toUpperCase();
+const WIN={Lunch:['9:00–11:00 am',['09:00','09:30','10:00','10:30','11:00']],Dinner:['6:00–8:00 pm',['18:00','18:30','19:00','19:30','20:00']]};
+const slotOf=s=>s.slot==='Dinner'?'Dinner':'Lunch';
+const whenTxt=s=>s.time?t12(s.time):WIN[slotOf(s)][0];
+function setTimes(sl,v){const w=WIN[sl]||WIN.Lunch,el=$('#time');el.innerHTML=`<option value="">Any time ${w[0]}</option>`+w[1].map(t=>`<option value="${t}">${t12(t)}</option>`).join('')+(v&&!w[1].includes(v)?`<option value="${v}">${t12(v)}</option>`:'');el.value=v||''}
+const nrm=x=>String(x||'').toLowerCase().replace(/[^a-z]/g,'');
+const lev=(a,b)=>{const m=a.length,n=b.length,d=Array.from({length:m+1},(_,i)=>[i]);for(let j=1;j<=n;j++)d[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n]};
+const canon=b=>{const t=String(b||'').trim(),k=nrm(t);if(!k)return t;let best=null,bd=9;for(const x of BOWLS){const dd=lev(k,nrm(x));if(dd<bd){bd=dd;best=x}}return bd<=2?best:t};
+const lastPrice=b=>{let p='',t=0;subs.forEach(s=>items(s).forEach(i=>{if(i.bowl===b&&+i.price&&(s.createdAt||0)>=t){t=s.createdAt||0;p=i.price}}));return p};
+
+/* alerts */
+function chime(){if(ac){try{const t=ac.currentTime,c=ac.createDynamicsCompressor(),m=ac.createGain();m.gain.value=1;c.connect(m).connect(ac.destination);for(let r=0;r<4;r++)[988,1319,1568,1319].forEach((f,i)=>{const s=t+r*1.05+i*.22;[f,f*1.005].forEach(fr=>{const o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=fr;g.gain.setValueAtTime(.0001,s);g.gain.exponentialRampToValueAtTime(.9,s+.015);g.gain.setValueAtTime(.9,s+.14);g.gain.exponentialRampToValueAtTime(.0001,s+.2);o.connect(g).connect(c);o.start(s);o.stop(s+.21)})})}catch(e){}}try{navigator.vibrate&&navigator.vibrate([500,150,500,150,500])}catch(e){}}
+let wl=null;const wake=async()=>{try{if(navigator.wakeLock&&document.visibilityState==='visible')wl=await navigator.wakeLock.request('screen')}catch(e){}};
+document.addEventListener('visibilitychange',()=>{if(ac&&document.visibilityState==='visible')wake()});
+$('#kSave').onclick=async()=>{const k=$('#kPhone').value.trim(),dp=$('#dPhone').value.trim();if(!db){toast('Not connected');return}if((k&&waNum(k).length<11)||(dp&&waNum(dp).length<11)){toast('Enter 10-digit mobile numbers');return}try{await db.doc('settings/main').set({kitchenPhone:k,deliveryPhone:dp});toast('Numbers saved')}catch(e){toast('Couldn\u2019t save — try again')}};
+const unlock=()=>{$('#startOv').hidden=true;if(ac)return;try{ac=new (window.AudioContext||window.webkitAudioContext)();ac.resume();$('#sound').textContent='Alerts on · test chime';$('#sound').className='';$('#alertTxt').textContent='Alerts are on. Keep this page open — new orders flash full-screen with a loud chime, repeated every 30 seconds until someone taps \u201cGot it\u201d.';wake()}catch(e){}};
+document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
+const mine=new Set();
+function bigAlert(list){$('#bigList').innerHTML=list.map(s=>`<p>${esc(s.change==='Updated'?'CHANGED · ':'')}${esc(s.name)} — ${esc(s.slot)} ${whenTxt(s)}<small>${items(s).map(i=>esc(i.bowl)+' ×'+(+i.qty||1)+(i.custom?' ('+esc(i.custom)+')':'')).join(' · ')}</small></p>`).join('');$('#big').hidden=false;$('#bigOk').focus()}
+$('#bigOk').onclick=async()=>{$('#big').hidden=true;for(const s of subs.filter(x=>x.kitchenSeen===false))await upd(s.id,{kitchenSeen:true,ackAt:Date.now()});location.hash='kitchen'};
+$('#sound').onclick=()=>{wake();try{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{})}catch(e){}try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();chime();$('#sound').textContent='Alerts on · test chime';$('#sound').className='';$('#alertTxt').textContent='Alerts are on. Keep this page open — you’ll hear a chime for every new or changed order, repeated every 30 seconds until someone taps “Got it”.'}catch(e){toast('This browser blocked sound — watch the red tickets instead')}};
+setInterval(()=>{if(ac&&subs.some(s=>s.kitchenSeen===false))chime()},30000);
+
+/* views */
+function route(){const v=(location.hash||'#kitchen').slice(1);const V=['kitchen','subscriptions','reports','new'],ok=V.includes(v)?v:'kitchen';for(const k of V){$('#v-'+k).hidden=k!==ok;$('#t-'+k).classList.toggle('on',k===ok)}if(ok==='new'&&!editId&&!$('#start').value)resetForm()}
+addEventListener('hashchange',route);
+
+const lines=(s,d)=>itemsOn(s,d).map(i=>`<div class="li"><div class="tk-h"><b>${esc(i.bowl)}</b><span class="q">×${+i.qty||1}</span></div>${i.custom?`<p class="cu">${esc(i.custom)}</p>`:''}</div>`).join('');
+const ticket=(s,cls,act,d)=>`<article class="tk ${cls}">${s.kitchenSeen===false?`<span class="tag ${s.change==='Updated'?'up':''}">${s.change==='Updated'?'Changed':'New order'}</span>`:''}${lines(s,d)}${!d&&nChanged(s)?`<p class="meta">+ different bowls on ${nChanged(s)} day${nChanged(s)>1?'s':''}: ${Object.keys(s.dayItems).filter(x=>onDay(s,x)).sort().map(fmt).join(', ')}</p>`:''}<p class="who">${esc(s.name)}${s.location?' · '+esc(s.location):''}</p><p class="meta">${esc(s.slot)}${' · '+whenTxt(s)} · ${esc(s.plan)} ${fmt(s.start)}${s.end&&s.end!==s.start?'–'+fmt(s.end):''}${s.paused?' · <span class="unpaid">Paused</span>':''}</p>${act}</article>`;
+
+function dayText(d,only){const all=subs.filter(s=>runsOn(s,d));const dt=new Date(d+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const line=s=>`${String(s.name||'').trim()} - `+itemsOn(s,d).map(i=>`${i.bowl} - ${+i.qty||1}${i.custom?' ( '+i.custom+' )':''}`).join(' + ')+(s.time?` [${t12(s.time).replace(' ',' ')}]`:'');
+  const slots=only?[only]:SLOTS;const out=[`*${dt}*`];let grand=0;
+  for(const sl of slots){const it=all.filter(s=>slotOf(s)===sl).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    out.push('','━━━━━━━━━━━━',`*${sl.toUpperCase()} — ${WIN[sl][0]}*`,'━━━━━━━━━━━━');
+    if(!it.length){out.push(`No ${sl.toLowerCase()} orders.`);continue}
+    it.forEach(s=>out.push(line(s)));
+    const tally={};it.forEach(s=>itemsOn(s,d).forEach(i=>{tally[i.bowl]=(tally[i.bowl]||0)+(+i.qty||1)}));
+    out.push('');Object.entries(tally).sort((a,b)=>b[1]-a[1]).forEach(([b,n])=>out.push(`${b} - ${n}`));
+    const n=it.reduce((t,s)=>t+qtyOn(s,d),0);grand+=n;out.push('',`*${sl} total bowls - ${n}*`)}
+  if(!only)out.push('',`*Total bowls for the day - ${grand}*`);return out.join('\n')}
+const dLong=d=>new Date(d+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+const custKey=s=>String(s.name||'').trim().toLowerCase().replace(/\s+/g,' ')+'|'+String(s.phone||'').replace(/\D/g,'').slice(-10);
+function deliveryText(d,only){const all=subs.filter(s=>runsOn(s,d));const out=[`*${dLong(d)} — Delivery list*`];let drops=0,bowls=0;
+  for(const sl of only?[only]:SLOTS){const it=all.filter(s=>slotOf(s)===sl).sort((a,b)=>(a.time||'').localeCompare(b.time||'')||String(a.location||'').localeCompare(String(b.location||'')));
+    out.push('','━━━━━━━━━━━━',`*${sl.toUpperCase()} — ${WIN[sl][0]}*`,'━━━━━━━━━━━━');
+    if(!it.length){out.push(`No ${sl.toLowerCase()} deliveries.`);continue}
+    it.forEach((s,n)=>{out.push(`*${n+1}. ${String(s.name||'').trim()}*${s.phone?' - '+s.phone:''}`,`📍 ${s.location||'Address not added'}`,itemsOn(s,d).map(i=>`${i.bowl} - ${+i.qty||1}${i.custom?' ( '+i.custom+' )':''}`).join(' + '));if(s.time)out.push(`⏰ Deliver by ${t12(s.time).replace(' ',' ')}`);if(!s.paid)out.push(`💰 Payment pending ${rs(money(s).total)} — please collect`);out.push('')});
+    const b=it.reduce((t,s)=>t+qtyOn(s,d),0);drops+=it.length;bowls+=b;out.push(`*${sl}: ${it.length} drop${it.length>1?'s':''} · ${b} bowl${b>1?'s':''}*`)}
+  if(!only)out.push('',`*Total: ${drops} drops · ${bowls} bowls*`);return out.join('\n')}
+function followText(d){const out=[`*Follow-ups — ${dLong(d)}*`];
+  const due=subs.filter(s=>!s.paid&&!s.paused).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  out.push('','*Payment pending*');
+  if(!due.length)out.push('No pending payments 👍');else{due.forEach((s,n)=>out.push(`${n+1}. ${String(s.name||'').trim()}${s.phone?' - '+s.phone:''} - ${rs(money(s).total)} (${s.plan} ${fmt(s.start)}${s.end&&s.end!==s.start?'–'+fmt(s.end):''})`));out.push(`Total pending - ${rs(due.reduce((t,s)=>t+money(s).total,0))}`)}
+  const lastEnd={};subs.forEach(s=>{const k=custKey(s),e=s.end||s.start||'';if(!lastEnd[k]||e>lastEnd[k].end)lastEnd[k]={end:e,s}});
+  const ren=Object.values(lastEnd).map(x=>x.s).filter(s=>{const e=s.end||s.start;return !s.paused&&e&&e>=addDays(d,-7)&&e<=addDays(d,2)}).sort((a,b)=>(a.end||'').localeCompare(b.end||''));
+  out.push('','*Renewal follow-up*');
+  if(!ren.length)out.push('No renewals due.');else ren.forEach((s,n)=>{const e=s.end||s.start;out.push(`${n+1}. ${String(s.name||'').trim()}${s.phone?' - '+s.phone:''} - ${s.plan} ${e<d?'ended '+fmt(e):e===d?'ends today':'ends '+fmt(e)} - ${items(s).map(i=>i.bowl).join(' + ')}`)});
+  return out.join('\n')}
+function setDay(k,d){const t=dayText(d),u=(t,ph)=>`https://wa.me/${waNum(ph)}?text=${encodeURIComponent(t)}`;$('#dayPrev'+k).textContent=t;$('#waDay'+k).href=u(t,kitchenPhone);$('#waL'+k).href=u(dayText(d,'Lunch'),kitchenPhone);$('#waD'+k).href=u(dayText(d,'Dinner'),kitchenPhone);
+  const dl=deliveryText(d);$('#dlPrev'+k).textContent=dl;$('#waDl'+k).href=u(dl,deliveryPhone);$('#waDlL'+k).href=u(deliveryText(d,'Lunch'),deliveryPhone);$('#waDlD'+k).href=u(deliveryText(d,'Dinner'),deliveryPhone);
+  const fu=followText(d);$('#fuPrev'+k).textContent=fu;$('#waFu'+k).href=u(fu,'')}
+function renderKitchen(){setDay('K',prepDate);
+  const pend=subs.filter(s=>s.kitchenSeen===false).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  $('#railBox').hidden=!pend.length;
+  $('#rail').innerHTML=pend.map(s=>ticket(s,'new',`<div class="act"><button class="pri" data-ack="${s.id}">Got it</button></div>`)).join('');
+  const nc=$('#newCount');nc.hidden=!pend.length;nc.textContent=pend.length;
+  document.title=pend.length?`(${pend.length}) New order · Salad Stories`:'Salad Stories Subscriptions';
+  const d=prepDate,list=subs.filter(s=>runsOn(s,d));
+  $('#prepTitle').textContent=(d===today()?'Today’s prep':d===addDays(today(),1)?'Tomorrow’s prep':'Prep for '+fmt(d))+` · ${list.reduce((n,s)=>n+qtyOn(s,d),0)} bowls`;
+  const tally={};list.forEach(s=>itemsOn(s,d).forEach(i=>{tally[i.bowl]=(tally[i.bowl]||0)+(+i.qty||1)}));
+  $('#tally').innerHTML=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([b,n])=>`<span>${esc(b)} × ${n}</span>`).join('');
+  $('#slots').innerHTML=SLOTS.map(sl=>{const it=list.filter(s=>(s.slot==='Dinner'?'Dinner':'Lunch')===sl).sort((a,b)=>(a.time||'').localeCompare(b.time||''));return `<div class="slot"><h3>${sl} <small style="font:500 14px Inter;color:var(--mut)">${WIN[sl][0]}</small> · ${it.length}</h3><div class="tks">${it.length?it.map(s=>ticket(s,prep[s.id]?'done':'',`<label class="chk"><input type="checkbox" data-prep="${s.id}" ${prep[s.id]?'checked':''}> Prepped</label>`,d)).join(''):'<p class="empty">Nothing for this slot.</p>'}</div></div>`}).join('');
+}
+
+function renderSubs(){
+  const t=today(),act=subs.filter(s=>{const k=state(s)[0];return k==='Active'||k.startsWith('Ends')});
+  const due=subs.filter(s=>!s.paid&&state(s)[0]!=='Ended');
+  const st=[[act.length,'Active now'],[rs(due.reduce((n,s)=>n+money(s).total,0)),`Payment pending · ${due.length}`],[subs.filter(s=>state(s)[0].startsWith('Ends')).length,'Ending in 3 days — renew'],[subs.filter(s=>runsOn(s,t)).reduce((n,s)=>n+qtyOn(s,t),0),'Bowls today']];
+  $('#stats').innerHTML=st.map(([n,l])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+  const q=$('#q').value.trim().toLowerCase(),f=$('#filt').value;
+  const rows=subs.filter(s=>{const k=state(s)[0];if(onDate&&!runsOn(s,onDate))return false;if(f==='active'&&!(k==='Active'||k.startsWith('Ends')))return false;if(f==='unpaid'&&(s.paid||k==='Ended'))return false;if(f==='soon'&&!k.startsWith('Ends'))return false;if(f==='ended'&&k!=='Ended')return false;if(f==='paused'&&k!=='Paused')return false;return !q||[s.name,s.phone,s.location,items(s).map(i=>i.bowl+' '+i.custom).join(' ')].join(' ').toLowerCase().includes(q)}).sort((a,b)=>onDate?(SLOTS.indexOf(a.slot)-SLOTS.indexOf(b.slot))||(a.time||'').localeCompare(b.time||''):(b.createdAt||0)-(a.createdAt||0));
+  $('#oSend').hidden=!onDate;if(onDate)setDay('O',onDate);
+  $('#dayhead').textContent=onDate?`Orders on ${fmt(onDate)}${onDate===t?' (today)':''} · ${rows.length} customers · ${rows.reduce((n,s)=>n+qtyOn(s,onDate),0)} bowls`:`All orders · ${rows.length}`;
+  $('#rows').innerHTML=rows.map(s=>{const[k,c]=state(s),m=money(s);return `<tr><td><b>${esc(s.name)}</b><small>${esc(s.phone)}</small></td><td>${esc(s.location)}</td><td>${esc(s.plan)} <span class="pill ${c}">${esc(k)}</span><small>${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${patTxt(s)} · ${m.n} day${m.n===1?'':'s'}</small></td><td>${esc(s.slot)}<small>${whenTxt(s)}</small></td><td>${itemsOn(s,onDate).map(i=>`${esc(i.bowl)} ×${+i.qty||1}${i.custom?`<small>${esc(i.custom)}</small>`:''}`).join('<br>')}${!onDate&&nChanged(s)?`<small>+ changes on ${nChanged(s)} day${nChanged(s)>1?'s':''}</small>`:''}</td><td><span class="pill ${s.paid?'p-ok':'p-no'}">${s.paid?'Received':'Pending'}</span><small>${rs(m.total)}${s.paid&&s.payMode?' · '+esc(s.payMode):''}</small></td><td><div class="rowb"><button class="pri" data-bill="${s.id}">Bill</button>${s.paid?'':`<button data-paid="${s.id}">Mark received</button>`}<button data-edit="${s.id}">Edit</button><button data-pause="${s.id}">${s.paused?'Resume':'Pause'}</button><button data-del="${s.id}">${delArm===s.id?'Tap again to delete':'Delete'}</button></div></td></tr>`}).join('');
+  const nr=$('#noRows');nr.hidden=!!rows.length;nr.textContent=!subs.length?'No orders yet. Tap “+ New order” to add the first one.':onDate?'No orders on this date.':'No orders match this search.';
+}
+/* reports */
+const hbars=(rows,fmtv)=>{rows=rows.filter(r=>r[0]);if(!rows.length)return'<p class="empty">No orders in this period.</p>';const mx=Math.max(...rows.map(r=>r[1]),1);return rows.map(([n,v,extra])=>`<div class="hb"><span title="${esc(n)}">${esc(n)}</span><div class="tr"><i style="width:${v/mx*100}%"></i></div><b>${fmtv(v,extra)}</b></div>`).join('')};
+function renderReports(){
+  const mode=document.querySelector('input[name=rmode]:checked').value;$('#rDay').hidden=mode!=='day';$('#rMonth').hidden=mode!=='month';
+  let ds=[];if(mode==='day')ds=[$('#rDay').value||today()];else{const mv=$('#rMonth').value||today().slice(0,7),[y,m]=mv.split('-').map(Number),n=new Date(y,m,0).getDate();for(let i=1;i<=n;i++)ds.push(`${mv}-${String(i).padStart(2,'0')}`)}
+  const byDay={},byBowl={},byCust={},bySlot={},byPlan={},cust=new Set();let bowls=0,val=0,pend=0,newN=0,newV=0;
+  for(const s of subs){const m=money(s),key=String(s.name||'').trim().toLowerCase().replace(/\s+/g,' ')+'|'+String(s.phone||'').replace(/\D/g,'').slice(-10);
+    const cd=iso(new Date(s.createdAt||0));if(cd>=ds[0]&&cd<=ds[ds.length-1]){newN++;newV+=m.total;byPlan[s.plan]=(byPlan[s.plan]||0)+1}
+    for(const d of ds){if(!runsOn(s,d))continue;const q=qtyOn(s,d),dv=dayVal(s,d),di=itemsOn(s,d),pp=priceOf(di);cust.add(key);bowls+=q;byDay[d]=(byDay[d]||0)+q;{const k=s.slot==='Dinner'?'Dinner':'Lunch';bySlot[k]=(bySlot[k]||0)+q};val+=dv;if(!s.paid)pend+=dv;
+      di.forEach(i=>{const b=byBowl[i.bowl]||(byBowl[i.bowl]={q:0,v:0}),iq=+i.qty||1;b.q+=iq;b.v+=dv*(pp?iq*(+i.price||0)/pp:iq/q)});
+      const c=byCust[key]||(byCust[key]={name:String(s.name||'').trim(),phone:s.phone||'',q:0,v:0});c.q+=q;c.v+=dv}}
+  $('#rTitle').textContent=mode==='day'?new Date(ds[0]+'T00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):new Date(ds[0]+'T00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  const topB=Object.entries(byBowl).sort((a,b)=>b[1].q-a[1].q),topC=Object.values(byCust).sort((a,b)=>b.q-a.q||b.v-a.v);
+  $('#rSub').textContent=bowls?`Most ordered: ${topB[0][0]}${topC.length?' · Top customer: '+topC[0].name:''}`:'No deliveries in this period yet.';
+  $('#rStats').innerHTML=[[bowls,'Bowls delivered'],[cust.size,'Customers served'],[rs(Math.round(val)),'Sales value'],[rs(Math.round(pend)),'Payment pending']].map(([n,l])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+  if(mode==='month'){$('#rChartT').textContent='Bowls each day';const mx=Math.max(...ds.map(d=>byDay[d]||0),1),best=ds.reduce((a,d)=>(byDay[d]||0)>(byDay[a]||0)?d:a,ds[0]);
+    $('#rChart').innerHTML=`<div class="cols">${ds.map(d=>{const v=byDay[d]||0,wd=new Date(d+'T00:00').getDay();return `<div class="${wd===0||wd===6?'we':''} ${v&&d===best?'hi':''}" title="${fmt(d)}: ${v} bowls">${v?`<span>${v}</span>`:''}<i style="height:${v/mx*85}%"></i></div>`}).join('')}</div><div class="xl">${ds.map((d,i)=>`<span>${[0,4,9,14,19,24,29].includes(i)?i+1:''}</span>`).join('')}</div>`}
+  else{$('#rChartT').textContent='Bowls by bowl type today';$('#rChart').innerHTML=hbars(topB.map(([n,b])=>[n,b.q]),v=>v)}
+  $('#rBowls').innerHTML=hbars(topB.map(([n,b])=>[n,b.q,b.v]),(v,x)=>`${v} · ${rs(Math.round(x))}`);
+  const dup=n=>topC.filter(c=>c.name.toLowerCase()===n.toLowerCase()).length>1;$('#rCust').innerHTML=hbars(topC.map(c=>[c.name+(dup(c.name)&&c.phone?' ('+c.phone.slice(-4)+')':''),c.q,c.v]),(v,x)=>`${v} · ${rs(Math.round(x))}`);
+  $('#rSlot').innerHTML=hbars(SLOTS.filter(s=>bySlot[s]).map(s=>[s,bySlot[s]]),v=>v+' bowls');
+  $('#rPlan').innerHTML=(newN?`<p class="sub" style="margin:0 0 8px">${newN} new order${newN>1?'s':''} taken, worth ${rs(newV)}</p>`:'')+hbars(['Daily','Weekly','Monthly'].filter(p=>byPlan[p]).map(p=>[p,byPlan[p]]),v=>v);
+}
+$$('input[name=rmode]').forEach(r=>r.onchange=renderReports);$('#rDay').onchange=renderReports;$('#rMonth').onchange=renderReports;
+$('#rDay').value=today();$('#rMonth').value=today().slice(0,7);
+const renderAll=()=>{renderKitchen();renderSubs();renderReports();if(billSub){const s=subs.find(x=>x.id===billSub);if(s)showBill(s,true)}};
+
+/* bill */
+function billText(s){const m=money(s);return ['Salad Stories — Bill '+billNo(s),'Date: '+fmt(iso(new Date(s.createdAt||Date.now()))),'Customer: '+s.name+(s.phone?' ('+s.phone+')':''),`Plan: ${s.plan} · ${fmt(s.start)}${s.end!==s.start?' – '+fmt(s.end):''} · ${s.slot}${' '+whenTxt(s)}`,'',...items(s).map(i=>`${i.bowl} × ${+i.qty||1} @ ${rs(i.price)}${i.custom?' ('+i.custom+')':''}`),'',`Per day: ${rs(m.perDay)}`,`${m.n} delivery day${m.n>1?'s':''}: ${rs(m.sub)}`,...(m.disc?['Discount'+(m.pct?' ('+m.pct+'%)':'')+': −'+rs(m.disc)]:[]),`Total: ${rs(m.total)}`,'Payment: '+(s.paid?'Received'+(s.payMode?' via '+s.payMode:''):'Pending'),'','Thank you for choosing Salad Stories!'].join('\n')}
+function showBill(s,quiet){billSub=s.id;const m=money(s);
+  $('#rc').innerHTML=`<h3>Salad Stories</h3><p class="c">Bill ${billNo(s)} · ${fmt(iso(new Date(s.createdAt||Date.now())))}</p><div><b>${esc(s.name)}</b>${s.phone?' · '+esc(s.phone):''}<small>${esc(s.location)}</small><small>${esc(s.plan)} · ${fmt(s.start)}${s.end!==s.start?' – '+fmt(s.end):''} · ${esc(s.slot)} ${whenTxt(s)}</small></div><hr>${items(s).map(i=>`<div class="r"><span>${esc(i.bowl)} × ${+i.qty||1}${i.custom?`<small>${esc(i.custom)}</small>`:''}</span><span>${rs((+i.qty||1)*(+i.price||0))}</span></div>`).join('')}${changes(s).length?`<hr><small style="font-weight:600;color:#16211a">Different bowls on these days</small>${changes(s).map(([d,a])=>`<div class="r"><span>${fmt(d)}: ${esc(itxt(a))}</span><span>${rs(priceOf(a))}</span></div>`).join('')}`:''}<hr><div class="r"><span>${changes(s).length?'Usual per day':'Per day'}</span><span>${rs(m.perDay)}</span></div><div class="r"><span>${m.n} delivery day${m.n>1?'s':''}${changes(s).length?' (incl. changes)':''}</span><span>${rs(m.sub)}</span></div>${m.disc?`<div class="r"><span>Discount${m.pct?' ('+m.pct+'%)':''}</span><span>−${rs(m.disc)}</span></div>`:''}<hr><div class="r tot"><span>Total</span><span>${rs(m.total)}</span></div><div class="r"><span>Payment</span><span>${s.paid?'Received'+(s.payMode?' · '+esc(s.payMode):''):'<b style="color:#c2361c">Pending</b>'}</span></div><p class="c" style="margin:14px 0 0">Thank you for choosing Salad Stories!</p>`;
+  $('#waChat').href=`https://wa.me/${waNum(s.phone)}`;$('#waChat').hidden=!waNum(s.phone);
+  const kn=waNum(kitchenPhone);$('#waKitchen').href=`https://wa.me/${kn}?text=${encodeURIComponent(kitchenText(s))}`;$('#kNote').textContent=kn?'Opens WhatsApp with the order filled in — just tap Send.':'Add the kitchen\u2019s WhatsApp number in the Kitchen tab so this goes straight to them. For now WhatsApp will ask who to send it to.';
+  if(!quiet){$('#ov').hidden=false;$('#waKitchen').focus()}}
+$('#closeBill').onclick=()=>{$('#ov').hidden=true;billSub=null;lastSaved=null};
+
+const waNum=p=>{const d=String(p||'').replace(/\D/g,'');return d.length===10?'91'+d:d};
+function kitchenText(s){return [(s.change==='Updated'?'ORDER CHANGED':'NEW ORDER')+' — Salad Stories',`${s.name}${s.location?' · '+s.location:''}`,`${s.plan} ${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${s.plan==='Custom'?'':s.plan!=='Daily'?' ('+ORDER.filter(x=>days(s).includes(x)).map(x=>DN[x]).join(' ')+')':''}`,...(s.plan==='Custom'?['Dates: '+(s.dates||[]).map(fmt).join(', ')]:[]),`${s.slot}${' '+whenTxt(s)}`,'',...items(s).map(i=>`• ${i.bowl} ×${+i.qty||1}${i.custom?' — '+i.custom:''}`),...(changes(s).length?['','Different bowls on:',...changes(s).map(([d,a])=>`• ${fmt(d)}: ${itxt(a)}`)]:[]),...(s.paused?['','PAUSED — do not prepare']:[])].join('\n')}
+function pdfDraw(doc,s){const m=money(s),W=80,L=6,R=W-6,cw=R-L;let y=12;const r=v=>'Rs. '+Number(Math.round(v||0)).toLocaleString('en-IN');
+  const t=(txt,{size=10,bold=false,align='left',color=[22,33,26]}={})=>{doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(...color);const ls=doc.splitTextToSize(String(txt),cw);ls.forEach(l=>{doc.text(l,align==='center'?W/2:L,y,{align});y+=size*.42});};
+  const row=(a,b,{bold=false,size=10}={})=>{doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(22,33,26);const ls=doc.splitTextToSize(String(a),cw-26);doc.text(ls,L,y);doc.text(String(b),R,y,{align:'right'});y+=ls.length*size*.42+1};
+  const hr=()=>{doc.setDrawColor(150,160,155);doc.setLineDashPattern([1,1],0);doc.line(L,y-1,R,y-1);y+=4};
+  t('Salad Stories',{size:18,bold:true,align:'center',color:[29,91,52]});y+=1;t('Bill '+billNo(s)+'  ·  '+fmt(iso(new Date(s.createdAt||Date.now()))),{size:8.5,align:'center',color:[79,99,87]});y+=3;hr();
+  t(s.name+(s.phone?'  ·  '+s.phone:''),{bold:true});if(s.location)t(s.location,{size:9,color:[79,99,87]});t(`${s.plan} · ${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''} · ${s.slot}${' '+whenTxt(s).replace('\u00a0',' ')}`,{size:9,color:[79,99,87]});y+=2;hr();
+  items(s).forEach(i=>{row(i.bowl,r((+i.qty||1)*(+i.price||0)),{bold:true});t(`${+i.qty||1} x ${r(i.price)} per day`,{size:8.5,color:[79,99,87]});if(i.custom)t(i.custom,{size:8.5,color:[194,54,28]});y+=2.5});if(changes(s).length){hr();t('Different bowls on these days',{size:9,bold:true});changes(s).forEach(([d,a])=>{row(fmt(d)+': '+itxt(a).replace(/×/g,'x'),r(priceOf(a)),{size:9})})}hr();
+  row(changes(s).length?'Usual per day':'Per day',r(m.perDay));row(`${m.n} delivery day${m.n>1?'s':''}`,r(m.sub));if(m.disc)row('Discount'+(m.pct?' ('+m.pct+'%)':''),'- '+r(m.disc));hr();
+  row('Total',r(m.total),{bold:true,size:13});y+=1;row('Payment',s.paid?'Received'+(s.payMode?' ('+s.payMode+')':''):'Pending',{bold:!s.paid});y+=4;
+  t('Thank you for choosing Salad Stories!',{size:9,align:'center',color:[29,91,52]});return y+6}
+function makePdf(s){const J=window.jspdf&&window.jspdf.jsPDF;if(!J)throw new Error('nolib');let d=new J({unit:'mm',format:[80,600]});const h=pdfDraw(d,s);d=new J({unit:'mm',format:[80,Math.max(h,90)]});pdfDraw(d,s);return d.output('blob')}
+$('#pdfBill').onclick=async()=>{const s=subs.find(x=>x.id===billSub)||lastSaved;if(!s)return;let blob;try{blob=makePdf(s)}catch(e){toast('PDF maker didn\u2019t load — check internet and reopen the page');return}
+  try{const dl=await claude.use('downloads');if(!dl){toast('PDF sharing isn\u2019t available on this device');return}await dl.save({filename:`SaladStories-Bill-${billNo(s)}-${String(s.name||'').replace(/[^A-Za-z0-9]+/g,'')}.pdf`,data:blob});toast('Bill PDF ready — pick WhatsApp to send it')}catch(e){if(e&&e.code==='declined')return;toast('Couldn\u2019t share the PDF — try again')}};
+
+/* form */
+$('#days').innerHTML=ORDER.map(d=>`<label><input type="checkbox" name="day" value="${d}" ${d>=1&&d<=5?'checked':''}>${DN[d]}</label>`).join('');
+const radio=(n,v)=>{const r=document.querySelector(`input[name=${n}][value="${v}"]`);if(r)r.checked=true};
+const plan=()=>document.querySelector('input[name=plan]:checked').value;
+function addItem(it={},box,noPrev){box=box||$('#items');const known=!it.bowl||BOWLS.includes(it.bowl),d=document.createElement('div');d.className='item';
+  d.innerHTML=`<div class="irow"><select class="ib" aria-label="Bowl"><option value="">Choose a bowl</option>${BOWLS.map(b=>`<option ${b===it.bowl?'selected':''}>${b}</option>`).join('')}<option value="__o" ${known?'':'selected'}>Other…</option></select><button type="button" class="ix" aria-label="Remove bowl">✕</button></div><input class="io" placeholder="Bowl name" value="${known?'':esc(it.bowl)}" ${known?'hidden':''}><div class="iqp"><label>Qty per day<input class="iq" type="number" min="1" value="${+it.qty||1}" inputmode="numeric"></label><label>Price of 1 bowl (₹)<input class="ip" type="number" min="0" placeholder="e.g. 180" value="${it.price??''}" inputmode="numeric"></label><span class="line"></span></div><input class="ic" placeholder="Customisation — e.g. no tomato, no capsicum" value="${esc(it.custom||'')}"><div class="chips">${CHIPS.map(c=>`<button type="button" data-chip="${c}">${c}</button>`).join('')}</div>`;
+  box.append(d);if(!noPrev)preview()}
+function collect(box){return [...(box||$('#items')).querySelectorAll(':scope > .item')].map(d=>{const v=d.querySelector('.ib').value;return{bowl:(v==='__o'?d.querySelector('.io').value:v).trim(),qty:Math.max(1,+d.querySelector('.iq').value||1),price:+d.querySelector('.ip').value||0,custom:d.querySelector('.ic').value.trim().replace(/,\s*$/,'')}}).filter(i=>i.bowl)}
+function formObj(){const F=FF;return{name:F.name.value.trim(),phone:F.phone.value.trim(),location:F.location.value.trim(),plan:plan(),start:F.start.value,end:F.end.value||endFor(plan(),F.start.value),days:$$('input[name=day]:checked').map(c=>+c.value),slot:document.querySelector('input[name=slot]:checked').value,time:F.time.value,items:collect(),dates:plan()==='Custom'?[...cdates].sort():[],dayItems:plan()==='Daily'?{}:JSON.parse(JSON.stringify(dayItems)),discPct:Math.min(100,Math.max(0,+F.disc.value||0)),paid:document.querySelector('input[name=paid]:checked').value==='yes',payMode:F.payMode.value}}
+function preview(){{const u=itxt(collect());$$('.dmr:not(.ch) .dms').forEach(e=>e.textContent=u||'Same as usual')}$$('.item').forEach(d=>{const q=Math.max(1,+d.querySelector('.iq').value||1),p=+d.querySelector('.ip').value||0;d.querySelector('.line').textContent=p?'= '+rs(q*p)+'/day':''});const o=formObj();if(!o.items.length||!o.start){$('#prev').innerHTML='Bill total appears here once you add bowls and a start date.';return}const m=money(o);const nc=Object.keys(o.dayItems||{}).length;$('#prev').innerHTML=`${nc?'Usual '+rs(m.perDay)+'/day, '+nc+' day'+(nc>1?'s':'')+' changed · '+m.n+' days':rs(m.perDay)+' per day × '+m.n+' day'+(m.n===1?'':'s')}${m.disc?` − ${m.pct}% discount (${rs(m.disc)})`:''} = <b>${rs(m.total)}</b>${o.items.some(i=>!i.price)?'<br><small style="font-weight:400">Add a price for every bowl to get the full total.</small>':''}`}
+let cdates=new Set(),dayItems={},dmOpen=null;
+function formDates(){return datesOf({plan:plan(),start:$('#start').value,end:$('#end').value||endFor(plan(),$('#start').value),days:$$('input[name=day]:checked').map(c=>+c.value),dates:[...cdates].sort()})}
+function drawDM(){const p=plan(),ds=p==='Daily'?[]:formDates();$('#dmBox').hidden=!ds.length;for(const k of Object.keys(dayItems))if(!ds.includes(k))delete dayItems[k];if(dmOpen&&!ds.includes(dmOpen))dmOpen=null;
+  const usual=collect();
+  $('#dm').innerHTML=ds.slice(0,120).map(d=>{const ch=dayItems[d],lbl=new Date(d+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});return `<div class="dmr ${ch?'ch':''}" data-dmd="${d}"><b>${lbl}</b><span class="dms">${esc(itxt(ch||usual)||'Same as usual')}</span><span class="rowb">${ch?`<button type="button" data-dmreset="${d}">Usual</button>`:''}<button type="button" data-dmedit="${d}">${dmOpen===d?'Close':'Change'}</button></span>${dmOpen===d?'<div class="dme"></div>':''}</div>`}).join('');
+  if(dmOpen){const box=$(`[data-dmd="${dmOpen}"] .dme`),src=dayItems[dmOpen]||usual;(src.length?src:[{}]).forEach(it=>addItem(it,box,true));box.insertAdjacentHTML('beforeend',`<div class="bar" style="margin:0"><button type="button" data-dmadd="${dmOpen}">+ Add bowl</button><button type="button" class="pri" data-dmdone="${dmOpen}">Save this day</button></div>`)}}
+function altFill(){cdates=new Set();const a=$('#start').value,b=$('#end').value;for(let d=a,k=0;d&&d<=b&&k<200;d=addDays(d,2),k++)cdates.add(d)}
+function drawCal(){const a=$('#start').value,b=$('#end').value;if(!a||!b||b<a){$('#cal').innerHTML='<p class="empty" style="grid-column:1/-1">Pick a start and end date first.</p>';$('#calN').textContent='';return}
+  for(const d of [...cdates])if(d<a||d>b)cdates.delete(d);
+  const lead=(new Date(a+'T00:00').getDay()+6)%7;let h=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<span class="h">${x}</span>`).join('')+'<span></span>'.repeat(lead);
+  for(let d=a,k=0;d<=b&&k<92;d=addDays(d,1),k++){const dt=new Date(d+'T00:00');h+=`<button type="button" data-cd="${d}" class="${cdates.has(d)?'on':''}" aria-pressed="${cdates.has(d)}">${dt.getDate()}${dt.getDate()===1||d===a?`<small>${dt.toLocaleDateString('en-IN',{month:'short'})}</small>`:''}</button>`}
+  $('#cal').innerHTML=h;$('#calN').textContent=`${cdates.size} delivery day${cdates.size===1?'':'s'}`;drawDM()}
+function syncPlan(keepEnd){const p=plan();$('#daysBox').hidden=p==='Daily'||p==='Custom';$('#calBox').hidden=p!=='Custom';if(!keepEnd)$('#end').value=endFor(p,$('#start').value);if(p==='Custom'){if(!cdates.size)altFill();drawCal()}drawDM();preview()}
+$('#end').onchange=()=>{if(plan()==='Custom')drawCal();drawDM();preview()};
+$('#days').addEventListener('change',()=>{drawDM();preview()});
+$('#calAlt').onclick=()=>{altFill();drawCal();preview()};
+$('#calWk').onclick=()=>{cdates=new Set();for(let d=$('#start').value,k=0;d&&d<=$('#end').value&&k<200;d=addDays(d,1),k++){const w=new Date(d+'T00:00').getDay();if(w&&w<6)cdates.add(d)}drawCal();preview()};
+$('#calClr').onclick=()=>{cdates=new Set();drawCal();preview()};
+$('#cal').addEventListener('click',e=>{const b=e.target.closest('[data-cd]');if(!b)return;const d=b.dataset.cd;cdates.has(d)?cdates.delete(d):cdates.add(d);drawCal();preview()});
+$$('input[name=plan]').forEach(r=>r.onchange=()=>{cdates=new Set();syncPlan()});$$('input[name=slot]').forEach(r=>r.onchange=()=>setTimes(r.value,''));$('#start').onchange=()=>{cdates=new Set();syncPlan()};
+$('#form').addEventListener('input',e=>{if(!e.target.matches('input[name=plan],#start'))preview()});
+$('#form').addEventListener('change',e=>{if(e.target.matches('.ib')){const d=e.target.closest('.item'),o=e.target.value==='__o';d.querySelector('.io').hidden=!o;if(o)d.querySelector('.io').focus();const p=d.querySelector('.ip');if(!p.value&&!o)p.value=lastPrice(e.target.value);preview()}});
+$('#addItem').onclick=()=>addItem();
+function resetForm(){editId=null;cdates=new Set();dayItems={};dmOpen=null;$('#form').reset();setTimes('Lunch','');$('#discBox').open=false;$('#items').innerHTML='';addItem();$('#start').value=addDays(today(),1);syncPlan();$('#formTitle').textContent='New order';$('#saveBtn').textContent='Save, make bill, send to kitchen'}
+function fill(s){editId=s.id;const F=FF;['name','phone','location','start','end'].forEach(k=>F[k].value=s[k]??'');setTimes(slotOf(s),s.time||'');F.disc.value=s.discPct||'';radio('plan',s.plan);cdates=new Set(s.dates||[]);dayItems=JSON.parse(JSON.stringify(s.dayItems||{}));dmOpen=null;radio('slot',s.slot);radio('paid',s.paid?'yes':'no');F.payMode.value=s.payMode||'GPay / UPI';$$('input[name=day]').forEach(c=>c.checked=days(s).includes(+c.value));syncPlan(true);$('#items').innerHTML='';items(s).forEach(addItem);$('#discBox').open=!!+s.discPct;$('#formTitle').textContent='Edit · '+s.name;$('#saveBtn').textContent='Save changes';preview()}
+$('#cancelEdit').onclick=()=>{resetForm();location.hash='subscriptions'};
+$('#form').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!db){toast('Can’t save right now — not connected');return}
+  const F=FF,o=formObj();
+  if(!o.name){toast('Please enter the customer name');F.name.focus();return}
+  if(!o.items.length){toast('Add at least one bowl');$('#items .ib').focus();return}
+  if(!o.start){toast('Pick a start date');F.start.focus();return}
+  if(o.plan==='Custom'){if(!o.dates.length){toast('Tap at least one delivery date');return}o.start=o.dates[0];o.end=o.dates[o.dates.length-1]}
+  else if(o.plan!=='Daily'&&!o.days.length){toast('Pick at least one delivery day');return}
+  if(o.end<o.start){toast('End date is before the start date');F.end.focus();return}
+  o.bowl=o.items.map(i=>i.bowl+(i.qty>1?' ×'+i.qty:'')).join(', ');o.qty=o.items.reduce((n,i)=>n+i.qty,0);o.amount=money(o).total;
+  busy=true;$('#saveBtn').disabled=true;
+  try{const now=Date.now();let id=editId;
+    if(editId){const old=subs.find(s=>s.id===editId)||{};const changed=['items','slot','time','location','start','end','days','dates','dayItems','name','plan'].some(k=>JSON.stringify(k==='items'?items(old).map(i=>[i.bowl,+i.qty||1,i.custom||'']):old[k])!==JSON.stringify(k==='items'?o.items.map(i=>[i.bowl,i.qty,i.custom]):o[k]));const u={...o,updatedAt:now};if(changed){u.kitchenSeen=false;u.rev=(old.rev||0)+1;u.change='Updated';mine.add(editId+':'+u.rev)}await db.collection('subs').doc(editId).update(u);toast(changed?'Saved — kitchen notified of the change':'Saved')}
+    else{const ref=db.collection('subs').doc();id=ref.id;mine.add(id+':0');await ref.set({...o,createdAt:now,updatedAt:now,kitchenSeen:false,rev:0,change:'New',paused:false});toast('Saved — kitchen notified')}
+    const s=subs.find(x=>x.id===id)||{...o,id,createdAt:now,change:editId?'Updated':'New'};lastSaved=s;
+    resetForm();location.hash='subscriptions';showBill(s)}
+  catch(err){toast(err&&err.code==='quota_exceeded'?'Storage is full — delete old ended orders':'Couldn’t save — check you have edit access and try again')}
+  finally{busy=false;$('#saveBtn').disabled=false}};
+
+/* actions */
+async function upd(id,data,msg){if(!db||busy)return;busy=true;try{await db.collection('subs').doc(id).update(data);if(msg)toast(msg)}catch(e){toast('Couldn’t update — try again')}finally{busy=false}}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(d.chip){const c=b.closest('.item').querySelector('.ic');if(!c.value.toLowerCase().includes(d.chip.toLowerCase()))c.value=c.value?c.value.replace(/,?\s*$/,', ')+d.chip:d.chip;preview();return}
+  if(b.classList.contains('ix')){const it=b.closest('.item'),box=it.parentElement;it.remove();if(!box.querySelector(':scope > .item'))addItem({},box);preview();return}
+  if(d.dmedit){dmOpen=dmOpen===d.dmedit?null:d.dmedit;drawDM();return}
+  if(d.dmreset){delete dayItems[d.dmreset];if(dmOpen===d.dmreset)dmOpen=null;drawDM();preview();return}
+  if(d.dmadd){addItem({},$(`[data-dmd="${d.dmadd}"] .dme`),true);const bar=$(`[data-dmd="${d.dmadd}"] .dme .bar`);bar.parentElement.append(bar);return}
+  if(d.dmdone){const a=collect($(`[data-dmd="${d.dmdone}"] .dme`)),u=collect();if(!a.length||JSON.stringify(a)===JSON.stringify(u))delete dayItems[d.dmdone];else dayItems[d.dmdone]=a;dmOpen=null;drawDM();preview();toast(dayItems[d.dmdone]?fmt(d.dmdone)+' changed':'Same as usual');return}
+  if(d.copy){const t=$('#'+d.copy).textContent;try{await navigator.clipboard.writeText(t);toast('Copied — paste it in WhatsApp')}catch(err){toast('Copy was blocked — use the WhatsApp button')}return}
+  if(d.ack)upd(d.ack,{kitchenSeen:true,ackAt:Date.now()},'Marked as seen');
+  else if(d.bill){const s=subs.find(x=>x.id===d.bill);if(s)showBill(s)}
+  else if(d.paid)upd(d.paid,{paid:true,updatedAt:Date.now()},'Payment marked received');
+  else if(d.pause){const s=subs.find(x=>x.id===d.pause);mine.add(s.id+':'+((s.rev||0)+1));upd(d.pause,{paused:!s.paused,updatedAt:Date.now(),kitchenSeen:false,change:'Updated',rev:(s.rev||0)+1},s.paused?'Resumed — kitchen notified':'Paused — kitchen notified')}
+  else if(d.edit){const s=subs.find(x=>x.id===d.edit);if(s){fill(s);location.hash='new'}}
+  else if(d.del){if(delArm!==d.del){delArm=d.del;renderSubs();setTimeout(()=>{if(delArm===d.del){delArm=null;renderSubs()}},4000);return}delArm=null;try{await db.collection('subs').doc(d.del).delete();toast('Deleted')}catch(err){toast('Couldn’t delete')}}
+  else if(b.id==='dToday')setDate(today());else if(b.id==='dTom')setDate(addDays(today(),1));
+  else if(b.id==='oToday'){onDate=today();$('#onDate').value=onDate;renderSubs()}else if(b.id==='oAll'){onDate='';$('#onDate').value='';renderSubs()}
+});
+document.addEventListener('change',async e=>{const id=e.target.dataset&&e.target.dataset.prep;if(!id||!db)return;const v=e.target.checked,ref=db.doc('prep/'+prepDate);
+  try{await ref.update({items:{[id]:v}})}catch(err){try{await ref.set({items:{...prep,[id]:v}})}catch(e2){toast('Couldn’t save — try again');e.target.checked=!v}}});
+$('#q').oninput=renderSubs;$('#filt').onchange=renderSubs;$('#prepDate').onchange=e=>e.target.value&&setDate(e.target.value);
+$('#onDate').onchange=e=>{onDate=e.target.value;renderSubs()};
+
+function setDate(d){prepDate=d;$('#prepDate').value=d;prep={};if(db){prepUnsub&&prepUnsub();prepUnsub=db.doc('prep/'+d).onSnapshot(s=>{prep=s.exists?(s.data().items||{}):{};renderKitchen()},()=>{})}renderKitchen()}
+
+/* start */
+prepDate=today();onDate=today();$('#prepDate').value=prepDate;$('#onDate').value=onDate;route();renderAll();
+const timer=setTimeout(()=>note('Can’t reach the saved data yet — check the connection. Orders shown may be out of date.'),10000);
+claude.use('db').then(async d=>{
+  if(!d){clearTimeout(timer);note('Can\u2019t connect — check the internet.');return}
+  db=d;setDate(prepDate);
+  db.doc('settings/main').onSnapshot(x=>{kitchenPhone=x.exists?String(x.data().kitchenPhone||''):'';deliveryPhone=x.exists?String(x.data().deliveryPhone||''):'';if(document.activeElement!==$('#kPhone'))$('#kPhone').value=kitchenPhone;if(document.activeElement!==$('#dPhone'))$('#dPhone').value=deliveryPhone;renderAll()},()=>{});
+  try{const u=await claude.use('user');const w=u&&u.can?await u.can('data.write'):null;if(w===false){note('You have view-only access. Ask the owner for Contributor access to add orders or tick prep.');$('#saveBtn').disabled=true}}catch(e){}
+  db.collection('subs').onSnapshot(snap=>{
+    if(!snap.metadata.fromCache){clearTimeout(timer);const t=$('#note').textContent;if(t.startsWith('Can')||t==='Connecting…')note('')}
+    subs=snap.docs.map(x=>({id:x.id,...x.data()}));
+    const pend=subs.filter(s=>s.kitchenSeen===false),fresh=pend.filter(s=>!seen.has(s.id+':'+(s.rev||0)));
+    pend.forEach(s=>seen.add(s.id+':'+(s.rev||0)));
+    if(!first&&fresh.length&&fresh.some(s=>!mine.has(s.id+':'+(s.rev||0)))){chime();bigAlert(fresh);try{if('Notification' in window&&Notification.permission==='granted')new Notification('Salad Stories — new order',{body:fresh.map(s=>s.name+': '+(s.bowl||'')).join('\n')})}catch(e){}toast(`${fresh[0].change==='Updated'?'Order changed':'New order'}: ${fresh[0].name} — ${fresh[0].bowl||''}`)}
+    first=false;renderAll();
+  },err=>{clearTimeout(timer);note('Live updates stopped — reopen the page to reconnect.')});
+});
+}
+</script>
+</body></html>
