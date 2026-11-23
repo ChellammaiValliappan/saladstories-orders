@@ -146,6 +146,7 @@ details.f summary{cursor:pointer;font-weight:600;font-size:14px;min-height:44px;
 .daysend{background:var(--gl);border-radius:14px;padding:12px 14px;margin-bottom:16px;display:grid;gap:8px}.daysend summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--mut);min-height:36px;display:flex;align-items:center}.daysend pre{white-space:pre-wrap;font:14px/1.5 Inter,sans-serif;background:var(--card);border-radius:10px;padding:10px 12px;margin:6px 0 0}
 .dm{display:grid;gap:6px;max-height:520px;overflow-y:auto}.dmr{display:grid;grid-template-columns:7.2em minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px 6px 12px;border:1px solid var(--ln);border-radius:10px;font-size:15px}.dmr.ch{border:2px solid var(--tom)}.dmr .dms{color:var(--mut)}.dmr.ch .dms{color:var(--ink);font-weight:600}.dmr .rowb button{min-height:38px}.dme{grid-column:1/-1;display:grid;gap:8px;padding:6px 0}
 @media(max-width:600px){.dmr{grid-template-columns:minmax(0,1fr) auto}.dmr .dms{grid-column:1/-1;grid-row:2}}
+.skr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #e1e8e3}.skr small{display:block;color:#4f6357}.skr .rowb button{min-height:38px}.skp{grid-column:1/-1;display:grid;gap:8px;background:#eef6e4;border-radius:10px;padding:10px}.skp input{color:#16211a;background:#fff}.kbox h3{font:700 20px Outfit;margin:0}
 .prev{background:var(--g);color:#fff;border-radius:12px;padding:12px 14px;font-weight:600}
 .prev b{font:700 24px Outfit}
 .ov{position:fixed;inset:0;background:rgba(10,20,14,.6);z-index:8;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
@@ -153,7 +154,7 @@ details.f summary{cursor:pointer;font-weight:600;font-size:14px;min-height:44px;
 .rc{background:#fff;color:#16211a;padding:22px 20px 26px;font:15px/1.5 Inter,sans-serif;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.3)}
 .rc::after{content:"";position:absolute;left:0;right:0;bottom:-10px;height:10px;background:linear-gradient(-45deg,transparent 7px,#fff 0) 0 0/14px 10px,linear-gradient(45deg,transparent 7px,#fff 0) 0 0/14px 10px;background-repeat:repeat-x}
 .rc h3{font-size:24px;color:#1d5b34;text-align:center}.rc .c{text-align:center;color:#4f6357;font-size:13px;margin:0 0 12px}
-.rc .r{display:flex;justify-content:space-between;gap:10px}.rc .r span:last-child{white-space:nowrap;text-align:right}
+.rc .br{padding:5px 0}.rc .br small{margin-top:1px}.rc .r{display:flex;justify-content:space-between;gap:10px}.rc .r span:last-child{white-space:nowrap;text-align:right}
 .rc hr{border:0;border-top:1px dashed #9aa9a0;margin:10px 0}.rc .tot{font:700 20px Outfit}.rc small{color:#4f6357;display:block}
 .ovin .bar{margin-top:16px}.kbox{background:#fff;color:#16211a;border-radius:14px;padding:14px;display:grid;gap:8px;margin:0 0 18px}.kbox small{color:#4f6357;font-size:13px}.kbox+.rc,.rc+.kbox{margin-top:0}.rc+.kbox{margin-top:28px}
 .big{position:fixed;inset:0;z-index:10;background:var(--tom);color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;animation:flash 1s steps(2) infinite}@keyframes flash{50%{background:#b8260f}}@media(prefers-reduced-motion:reduce){.big{animation:none}}.bigin{width:min(520px,100%);display:grid;gap:14px;text-align:center}.bt{font:700 clamp(40px,10vw,64px)/1 Outfit;margin:0}#bigList p{margin:0;font-size:19px;font-weight:600}#bigList small{display:block;font-size:16px;font-weight:500;opacity:.9}.big button{background:#fff;color:#b8260f;border:0;font-size:20px;min-height:60px}
@@ -240,6 +241,7 @@ details.f summary{cursor:pointer;font-weight:600;font-size:14px;min-height:44px;
 <div class="ov" id="ov" hidden><div class="ovin"><div class="kbox" id="kbox"><b>1. Tell the kitchen</b><a class="btn wa" id="waKitchen" href="#" target="_blank" rel="noopener">Send order to kitchen WhatsApp</a><small id="kNote"></small></div><div class="rc" id="rc"></div><div class="kbox"><b>2. Send the bill to the customer</b><button class="pri" id="pdfBill">Share bill as PDF</button><small id="pdfHint">Your phone's share menu opens — choose WhatsApp, then the customer. On a computer the PDF downloads; attach it in WhatsApp.</small><a class="btn" id="waChat" href="#" target="_blank" rel="noopener">Open customer's WhatsApp chat</a></div><div class="bar"><button id="closeBill">Close</button></div></div></div>
 <div class="start" id="startOv" hidden><div class="bigin"><h2>Kitchen alerts</h2><p style="margin:0;font-size:18px">Tap once to switch on the order sound. New orders will then ring and flash here automatically.</p><button id="startBtn">Tap to start alerts</button></div></div>
 <div class="big" id="big" hidden role="alertdialog" aria-live="assertive"><div class="bigin"><p class="bt">NEW ORDER</p><div id="bigList"></div><button id="bigOk">Got it — start prep</button></div></div>
+<div class="ov" id="skipOv" hidden><div class="ovin"><div class="kbox" id="skipBox"></div><div class="bar"><button id="skipClose">Close</button></div></div></div>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -263,21 +265,26 @@ let tt;const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('on')
 const days=s=>Array.isArray(s.days)&&s.days.length?s.days:[1,2,3,4,5];
 const items=s=>(Array.isArray(s.items)&&s.items.length?s.items:[{bowl:s.bowl||'',qty:s.qty||1,price:0,custom:s.custom||''}]).map(i=>({...i,bowl:canon(i.bowl)}));
 const qtyOf=s=>items(s).reduce((n,i)=>n+(+i.qty||1),0);
-const itemsOn=(s,d)=>{const o=s.dayItems&&d&&s.dayItems[d];return Array.isArray(o)&&o.length?o.map(i=>({...i,bowl:canon(i.bowl)})):items(s)};
+const itemsOn=(s,d)=>{const f=d&&movedFrom(s,d);if(f)d=f;const o=s.dayItems&&d&&s.dayItems[d];return Array.isArray(o)&&o.length?o.map(i=>({...i,bowl:canon(i.bowl)})):items(s)};
 const qtyOn=(s,d)=>itemsOn(s,d).reduce((n,i)=>n+(+i.qty||1),0);
 const priceOf=a=>a.reduce((t,i)=>t+(+i.qty||1)*(+i.price||0),0);
-const changes=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>onDay(s,d)).sort().map(d=>[d,itemsOn(s,d)]):[];
+const changes=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>baseOnDay(s,d)).sort().map(d=>[d,itemsOn(s,d)]):[];
 const itxt=a=>a.map(i=>`${i.bowl} ×${+i.qty||1}${i.custom?' ('+i.custom+')':''}`).join(' + ');
-const nChanged=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>onDay(s,d)).length:0;
-function onDay(s,d){if(s.plan==='Custom')return Array.isArray(s.dates)&&s.dates.includes(d);if(!s.start||d<s.start||(s.end&&d>s.end))return false;return s.plan==='Daily'||days(s).includes(new Date(d+'T00:00').getDay())}
+const nChanged=s=>s.dayItems?Object.keys(s.dayItems).filter(d=>baseOnDay(s,d)).length:0;
+function baseOnDay(s,d){if(s.plan==='Custom')return Array.isArray(s.dates)&&s.dates.includes(d);if(!s.start||d<s.start||(s.end&&d>s.end))return false;return s.plan==='Daily'||days(s).includes(new Date(d+'T00:00').getDay())}
+const movedFrom=(s,d)=>{if(!s.moves)return null;for(const [f,t] of Object.entries(s.moves))if(t===d)return f;return null};
+const isSkipped=(s,d)=>!!s.moves&&Object.prototype.hasOwnProperty.call(s.moves,d);
+function onDay(s,d){if(movedFrom(s,d))return true;if(isSkipped(s,d))return false;return baseOnDay(s,d)}
 const patTxt=s=>s.plan==='Daily'?'':s.plan==='Custom'?` · ${(s.dates||[]).length} chosen days${isAlt(s.dates)?' (alternate)':''}`:' · '+ORDER.filter(x=>days(s).includes(x)).map(x=>DN[x]).join(' ');
 const isAlt=a=>Array.isArray(a)&&a.length>2&&a.every((d,i)=>!i||addDays(a[i-1],2)===d);
 const runsOn=(s,d)=>!s.paused&&onDay(s,d);
-function datesOf(s){if(s.plan==='Daily')return s.start?[s.start]:[];if(s.plan==='Custom')return [...(s.dates||[])].sort();const r=[];for(let d=s.start,k=0;d&&k<400&&d<=(s.end||s.start);k++,d=addDays(d,1))if(onDay(s,d))r.push(d);return r}
-function nDays(s){if(s.plan==='Daily')return 1;if(s.plan==='Custom')return (s.dates||[]).length;let n=0,d=s.start;for(let k=0;k<400&&d&&d<=(s.end||s.start);k++,d=addDays(d,1))if(onDay(s,d))n++;return n}
-function money(s){const n0=nDays(s);if(!(Array.isArray(s.items)&&s.items.length)&&+s.amount){const a=+s.amount;return{perDay:n0?a/n0:a,n:n0,sub:a,pct:0,disc:0,total:a}}const perDay=priceOf(items(s)),n=n0,sub=s.dayItems?datesOf(s).reduce((t,d)=>t+priceOf(itemsOn(s,d)),0):perDay*n,pct=s.discPct!=null?Math.min(100,Math.max(0,+s.discPct||0)):0,disc=s.discPct!=null?Math.round(sub*pct/100):Math.min(+s.disc||0,sub);return{perDay,n,sub,pct,disc,total:sub-disc}}
+function baseDates(s){if(s.plan==='Daily')return s.start?[s.start]:[];if(s.plan==='Custom')return [...(s.dates||[])].sort();const r=[];for(let d=s.start,k=0;d&&k<400&&d<=(s.end||s.start);k++,d=addDays(d,1))if(baseOnDay(s,d))r.push(d);return r}
+function datesOf(s){const b=baseDates(s).filter(d=>!isSkipped(s,d)),m=s.moves?Object.values(s.moves).filter(Boolean):[];return [...new Set([...b,...m])].sort()}
+const effEnd=s=>{const a=datesOf(s);return a.length?a[a.length-1]:(s.end||s.start)};
+function nDays(s){return baseDates(s).length}
+function money(s){const n0=nDays(s);if(!(Array.isArray(s.items)&&s.items.length)&&+s.amount){const a=+s.amount;return{perDay:n0?a/n0:a,n:n0,sub:a,pct:0,disc:0,total:a}}const perDay=priceOf(items(s)),n=n0,sub=baseDates(s).reduce((t,d)=>t+priceOf(itemsOn(s,d)),0),pct=s.discPct!=null?Math.min(100,Math.max(0,+s.discPct||0)):0,disc=s.discPct!=null?Math.round(sub*pct/100):Math.min(+s.disc||0,sub);return{perDay,n,sub,pct,disc,total:sub-disc}}
 const dayVal=(s,d)=>{const m=money(s);if(!m.sub)return 0;const raw=(Array.isArray(s.items)&&s.items.length)?priceOf(itemsOn(s,d)):m.perDay;return raw*m.total/m.sub};
-function state(s){const t=today();if(s.paused)return['Paused','p-x'];if(s.end&&s.end<t)return['Ended','p-x'];if(s.start>t)return['Starts '+fmt(s.start),'p-w'];if(s.end&&s.plan!=='Daily'&&s.end<=addDays(t,3))return['Ends '+fmt(s.end),'p-w'];return['Active','p-ok']}
+function state(s){const t=today(),e=effEnd(s);if(s.paused)return['Paused','p-x'];if(e&&e<t)return['Ended','p-x'];if(s.start>t)return['Starts '+fmt(s.start),'p-w'];if(e&&s.plan!=='Daily'&&e<=addDays(t,3))return['Ends '+fmt(e),'p-w'];return['Active','p-ok']}
 const billNo=s=>'SS-'+iso(new Date(s.createdAt||Date.now())).slice(2).replace(/-/g,'')+'-'+String(s.id||'').slice(-4).toUpperCase();
 const WIN={Lunch:['9:00–11:00 am',['09:00','09:30','10:00','10:30','11:00']],Dinner:['6:00–8:00 pm',['18:00','18:30','19:00','19:30','20:00']]};
 const slotOf=s=>s.slot==='Dinner'?'Dinner':'Lunch';
@@ -332,10 +339,10 @@ function followText(d){const out=[`*Follow-ups — ${dLong(d)}*`];
   const due=subs.filter(s=>!s.paid&&!s.paused).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
   out.push('','*Payment pending*');
   if(!due.length)out.push('No pending payments 👍');else{due.forEach((s,n)=>out.push(`${n+1}. ${String(s.name||'').trim()}${s.phone?' - '+s.phone:''} - ${rs(money(s).total)} (${s.plan} ${fmt(s.start)}${s.end&&s.end!==s.start?'–'+fmt(s.end):''})`));out.push(`Total pending - ${rs(due.reduce((t,s)=>t+money(s).total,0))}`)}
-  const lastEnd={};subs.forEach(s=>{const k=custKey(s),e=s.end||s.start||'';if(!lastEnd[k]||e>lastEnd[k].end)lastEnd[k]={end:e,s}});
-  const ren=Object.values(lastEnd).map(x=>x.s).filter(s=>{const e=s.end||s.start;return !s.paused&&e&&e>=addDays(d,-7)&&e<=addDays(d,2)}).sort((a,b)=>(a.end||'').localeCompare(b.end||''));
+  const lastEnd={};subs.forEach(s=>{const k=custKey(s),e=effEnd(s)||'';if(!lastEnd[k]||e>lastEnd[k].end)lastEnd[k]={end:e,s}});
+  const ren=Object.values(lastEnd).map(x=>x.s).filter(s=>{const e=effEnd(s);return !s.paused&&e&&e>=addDays(d,-7)&&e<=addDays(d,2)}).sort((a,b)=>effEnd(a).localeCompare(effEnd(b)));
   out.push('','*Renewal follow-up*');
-  if(!ren.length)out.push('No renewals due.');else ren.forEach((s,n)=>{const e=s.end||s.start;out.push(`${n+1}. ${String(s.name||'').trim()}${s.phone?' - '+s.phone:''} - ${s.plan} ${e<d?'ended '+fmt(e):e===d?'ends today':'ends '+fmt(e)} - ${items(s).map(i=>i.bowl).join(' + ')}`)});
+  if(!ren.length)out.push('No renewals due.');else ren.forEach((s,n)=>{const e=effEnd(s);out.push(`${n+1}. ${String(s.name||'').trim()}${s.phone?' - '+s.phone:''} - ${s.plan} ${e<d?'ended '+fmt(e):e===d?'ends today':'ends '+fmt(e)} - ${items(s).map(i=>i.bowl).join(' + ')}`)});
   return out.join('\n')}
 function setDay(k,d){const t=dayText(d),u=(t,ph)=>`https://wa.me/${waNum(ph)}?text=${encodeURIComponent(t)}`;$('#dayPrev'+k).textContent=t;$('#waDay'+k).href=u(t,kitchenPhone);$('#waL'+k).href=u(dayText(d,'Lunch'),kitchenPhone);$('#waD'+k).href=u(dayText(d,'Dinner'),kitchenPhone);
   const dl=deliveryText(d);$('#dlPrev'+k).textContent=dl;$('#waDl'+k).href=u(dl,deliveryPhone);$('#waDlL'+k).href=u(deliveryText(d,'Lunch'),deliveryPhone);$('#waDlD'+k).href=u(deliveryText(d,'Dinner'),deliveryPhone);
@@ -362,7 +369,7 @@ function renderSubs(){
   const rows=subs.filter(s=>{const k=state(s)[0];if(onDate&&!runsOn(s,onDate))return false;if(f==='active'&&!(k==='Active'||k.startsWith('Ends')))return false;if(f==='unpaid'&&(s.paid||k==='Ended'))return false;if(f==='soon'&&!k.startsWith('Ends'))return false;if(f==='ended'&&k!=='Ended')return false;if(f==='paused'&&k!=='Paused')return false;return !q||[s.name,s.phone,s.location,items(s).map(i=>i.bowl+' '+i.custom).join(' ')].join(' ').toLowerCase().includes(q)}).sort((a,b)=>onDate?(SLOTS.indexOf(a.slot)-SLOTS.indexOf(b.slot))||(a.time||'').localeCompare(b.time||''):(b.createdAt||0)-(a.createdAt||0));
   $('#oSend').hidden=!onDate;if(onDate)setDay('O',onDate);
   $('#dayhead').textContent=onDate?`Orders on ${fmt(onDate)}${onDate===t?' (today)':''} · ${rows.length} customers · ${rows.reduce((n,s)=>n+qtyOn(s,onDate),0)} bowls`:`All orders · ${rows.length}`;
-  $('#rows').innerHTML=rows.map(s=>{const[k,c]=state(s),m=money(s);return `<tr><td><b>${esc(s.name)}</b><small>${esc(s.phone)}</small></td><td>${esc(s.location)}</td><td>${esc(s.plan)} <span class="pill ${c}">${esc(k)}</span><small>${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${patTxt(s)} · ${m.n} day${m.n===1?'':'s'}</small></td><td>${esc(s.slot)}<small>${whenTxt(s)}</small></td><td>${itemsOn(s,onDate).map(i=>`${esc(i.bowl)} ×${+i.qty||1}${i.custom?`<small>${esc(i.custom)}</small>`:''}`).join('<br>')}${!onDate&&nChanged(s)?`<small>+ changes on ${nChanged(s)} day${nChanged(s)>1?'s':''}</small>`:''}</td><td><span class="pill ${s.paid?'p-ok':'p-no'}">${s.paid?'Received':'Pending'}</span><small>${rs(m.total)}${s.paid&&s.payMode?' · '+esc(s.payMode):''}</small></td><td><div class="rowb"><button class="pri" data-bill="${s.id}">Bill</button>${s.paid?'':`<button data-paid="${s.id}">Mark received</button>`}<button data-edit="${s.id}">Edit</button><button data-pause="${s.id}">${s.paused?'Resume':'Pause'}</button><button data-del="${s.id}">${delArm===s.id?'Tap again to delete':'Delete'}</button></div></td></tr>`}).join('');
+  $('#rows').innerHTML=rows.map(s=>{const[k,c]=state(s),m=money(s);return `<tr><td><b>${esc(s.name)}</b><small>${esc(s.phone)}</small></td><td>${esc(s.location)}</td><td>${esc(s.plan)} <span class="pill ${c}">${esc(k)}</span><small>${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${patTxt(s)} · ${m.n} day${m.n===1?'':'s'}</small></td><td>${esc(s.slot)}<small>${whenTxt(s)}</small></td><td>${itemsOn(s,onDate).map(i=>`${esc(i.bowl)} ×${+i.qty||1}${i.custom?`<small>${esc(i.custom)}</small>`:''}`).join('<br>')}${!onDate&&nChanged(s)?`<small>+ changes on ${nChanged(s)} day${nChanged(s)>1?'s':''}</small>`:''}</td><td><span class="pill ${s.paid?'p-ok':'p-no'}">${s.paid?'Received':'Pending'}</span><small>${rs(m.total)}${s.paid&&s.payMode?' · '+esc(s.payMode):''}</small></td><td><div class="rowb"><button class="pri" data-bill="${s.id}">Bill</button>${s.paid?'':`<button data-paid="${s.id}">Mark received</button>`}<button data-skip="${s.id}">Skip / move day</button><button data-edit="${s.id}">Edit</button><button data-pause="${s.id}">${s.paused?'Resume':'Pause'}</button><button data-del="${s.id}">${delArm===s.id?'Tap again to delete':'Delete'}</button></div></td></tr>`}).join('');
   const nr=$('#noRows');nr.hidden=!!rows.length;nr.textContent=!subs.length?'No orders yet. Tap “+ New order” to add the first one.':onDate?'No orders on this date.':'No orders match this search.';
 }
 /* reports */
@@ -390,27 +397,30 @@ function renderReports(){
 }
 $$('input[name=rmode]').forEach(r=>r.onchange=renderReports);$('#rDay').onchange=renderReports;$('#rMonth').onchange=renderReports;
 $('#rDay').value=today();$('#rMonth').value=today().slice(0,7);
-const renderAll=()=>{renderKitchen();renderSubs();renderReports();if(billSub){const s=subs.find(x=>x.id===billSub);if(s)showBill(s,true)}};
+const renderAll=()=>{renderKitchen();renderSubs();renderReports();if(skipSub&&!$('#skipOv').hidden)drawSkip();if(billSub){const s=subs.find(x=>x.id===billSub);if(s)showBill(s,true)}};
 
 /* bill */
-function billText(s){const m=money(s);return ['Salad Stories — Bill '+billNo(s),'Date: '+fmt(iso(new Date(s.createdAt||Date.now()))),'Customer: '+s.name+(s.phone?' ('+s.phone+')':''),`Plan: ${s.plan} · ${fmt(s.start)}${s.end!==s.start?' – '+fmt(s.end):''} · ${s.slot}${' '+whenTxt(s)}`,'',...items(s).map(i=>`${i.bowl} × ${+i.qty||1} @ ${rs(i.price)}${i.custom?' ('+i.custom+')':''}`),'',`Per day: ${rs(m.perDay)}`,`${m.n} delivery day${m.n>1?'s':''}: ${rs(m.sub)}`,...(m.disc?['Discount'+(m.pct?' ('+m.pct+'%)':'')+': −'+rs(m.disc)]:[]),`Total: ${rs(m.total)}`,'Payment: '+(s.paid?'Received'+(s.payMode?' via '+s.payMode:''):'Pending'),'','Thank you for choosing Salad Stories!'].join('\n')}
+const dLab=d=>new Date(d+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+function billRows(s){const legacy=!(Array.isArray(s.items)&&s.items.length);return baseDates(s).map(d=>{const a=itemsOn(s,d),mv=isSkipped(s,d)?s.moves[d]:undefined;return{date:mv||d,orig:d,moved:!!mv,pending:mv==='',items:a,price:legacy?null:priceOf(a)}}).sort((x,y)=>x.date.localeCompare(y.date))}
+const rowLabel=r=>r.pending?`${dLab(r.orig)} (skipped — new date to be fixed)`:r.moved?`${dLab(r.date)} (moved from ${fmt(r.orig)})`:dLab(r.date);
+function billText(s){const m=money(s),rows=billRows(s);return ['*Salad Stories — Bill '+billNo(s)+'*',fmt(iso(new Date(s.createdAt||Date.now()))),'',`${s.name}${s.phone?' · '+s.phone:''}`,...(s.location?[s.location]:[]),`${s.plan} · ${s.slot} ${whenTxt(s).replace(' ',' ')}`,'',...rows.map(r=>`${rowLabel(r)}: ${itxt(r.items)}${r.price!=null?' — '+rs(r.price):''}`),'',`Subtotal (${m.n} day${m.n>1?'s':''}): ${rs(m.sub)}`,...(m.disc?[`Discount${m.pct?' ('+m.pct+'%)':''}: −${rs(m.disc)}`]:[]),`*Total: ${rs(m.total)}*`,'Payment: '+(s.paid?'Received'+(s.payMode?' ('+s.payMode+')':''):'Pending'),'','Thank you for choosing Salad Stories!'].join('\n')}
 function showBill(s,quiet){billSub=s.id;const m=money(s);
-  $('#rc').innerHTML=`<h3>Salad Stories</h3><p class="c">Bill ${billNo(s)} · ${fmt(iso(new Date(s.createdAt||Date.now())))}</p><div><b>${esc(s.name)}</b>${s.phone?' · '+esc(s.phone):''}<small>${esc(s.location)}</small><small>${esc(s.plan)} · ${fmt(s.start)}${s.end!==s.start?' – '+fmt(s.end):''} · ${esc(s.slot)} ${whenTxt(s)}</small></div><hr>${items(s).map(i=>`<div class="r"><span>${esc(i.bowl)} × ${+i.qty||1}${i.custom?`<small>${esc(i.custom)}</small>`:''}</span><span>${rs((+i.qty||1)*(+i.price||0))}</span></div>`).join('')}${changes(s).length?`<hr><small style="font-weight:600;color:#16211a">Different bowls on these days</small>${changes(s).map(([d,a])=>`<div class="r"><span>${fmt(d)}: ${esc(itxt(a))}</span><span>${rs(priceOf(a))}</span></div>`).join('')}`:''}<hr><div class="r"><span>${changes(s).length?'Usual per day':'Per day'}</span><span>${rs(m.perDay)}</span></div><div class="r"><span>${m.n} delivery day${m.n>1?'s':''}${changes(s).length?' (incl. changes)':''}</span><span>${rs(m.sub)}</span></div>${m.disc?`<div class="r"><span>Discount${m.pct?' ('+m.pct+'%)':''}</span><span>−${rs(m.disc)}</span></div>`:''}<hr><div class="r tot"><span>Total</span><span>${rs(m.total)}</span></div><div class="r"><span>Payment</span><span>${s.paid?'Received'+(s.payMode?' · '+esc(s.payMode):''):'<b style="color:#c2361c">Pending</b>'}</span></div><p class="c" style="margin:14px 0 0">Thank you for choosing Salad Stories!</p>`;
+  const rows=billRows(s);$('#rc').innerHTML=`<h3>Salad Stories</h3><p class="c">Bill ${billNo(s)} · ${fmt(iso(new Date(s.createdAt||Date.now())))}</p><div><b>${esc(s.name)}</b>${s.phone?' · '+esc(s.phone):''}${s.location?`<small>${esc(s.location)}</small>`:''}<small>${esc(s.plan)} · ${esc(s.slot)} ${whenTxt(s)}</small></div><hr>${rows.map(r=>`<div class="r br"><span><b>${esc(rowLabel(r))}</b><small>${r.items.map(i=>`${esc(i.bowl)} ×${+i.qty||1}${i.custom?' · '+esc(i.custom):''}`).join('<br>')}</small></span><span>${r.price!=null?rs(r.price):''}</span></div>`).join('')}<hr><div class="r"><span>Subtotal (${m.n} day${m.n>1?'s':''})</span><span>${rs(m.sub)}</span></div>${m.disc?`<div class="r"><span>Discount${m.pct?' ('+m.pct+'%)':''}</span><span>−${rs(m.disc)}</span></div>`:''}<hr><div class="r tot"><span>Total</span><span>${rs(m.total)}</span></div><div class="r"><span>Payment</span><span>${s.paid?'Received'+(s.payMode?' · '+esc(s.payMode):''):'<b style="color:#c2361c">Pending</b>'}</span></div><p class="c" style="margin:14px 0 0">Thank you for choosing Salad Stories!</p>`;
   $('#waChat').href=`https://wa.me/${waNum(s.phone)}`;$('#waChat').hidden=!waNum(s.phone);
   const kn=waNum(kitchenPhone);$('#waKitchen').href=`https://wa.me/${kn}?text=${encodeURIComponent(kitchenText(s))}`;$('#kNote').textContent=kn?'Opens WhatsApp with the order filled in — just tap Send.':'Add the kitchen\u2019s WhatsApp number in the Kitchen tab so this goes straight to them. For now WhatsApp will ask who to send it to.';
   if(!quiet){$('#ov').hidden=false;$('#waKitchen').focus()}}
 $('#closeBill').onclick=()=>{$('#ov').hidden=true;billSub=null;lastSaved=null};
 
 const waNum=p=>{const d=String(p||'').replace(/\D/g,'');return d.length===10?'91'+d:d};
-function kitchenText(s){return [(s.change==='Updated'?'ORDER CHANGED':'NEW ORDER')+' — Salad Stories',`${s.name}${s.location?' · '+s.location:''}`,`${s.plan} ${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${s.plan==='Custom'?'':s.plan!=='Daily'?' ('+ORDER.filter(x=>days(s).includes(x)).map(x=>DN[x]).join(' ')+')':''}`,...(s.plan==='Custom'?['Dates: '+(s.dates||[]).map(fmt).join(', ')]:[]),`${s.slot}${' '+whenTxt(s)}`,'',...items(s).map(i=>`• ${i.bowl} ×${+i.qty||1}${i.custom?' — '+i.custom:''}`),...(changes(s).length?['','Different bowls on:',...changes(s).map(([d,a])=>`• ${fmt(d)}: ${itxt(a)}`)]:[]),...(s.paused?['','PAUSED — do not prepare']:[])].join('\n')}
+function kitchenText(s){return [(s.change==='Updated'?'ORDER CHANGED':'NEW ORDER')+' — Salad Stories',`${s.name}${s.location?' · '+s.location:''}`,`${s.plan} ${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''}${s.plan==='Custom'?'':s.plan!=='Daily'?' ('+ORDER.filter(x=>days(s).includes(x)).map(x=>DN[x]).join(' ')+')':''}`,...(s.plan==='Custom'?['Dates: '+(s.dates||[]).map(fmt).join(', ')]:[]),`${s.slot}${' '+whenTxt(s)}`,'',...items(s).map(i=>`• ${i.bowl} ×${+i.qty||1}${i.custom?' — '+i.custom:''}`),...(changes(s).length?['','Different bowls on:',...changes(s).map(([d,a])=>`• ${fmt(d)}: ${itxt(a)}`)]:[]),...(s.moves&&Object.keys(s.moves).length?['','Skipped / moved days:',...Object.entries(s.moves).sort().map(([o,n])=>`• ${fmt(o)} → ${n?fmt(n):'skipped (new date later)'}`)]:[]),...(s.paused?['','PAUSED — do not prepare']:[])].join('\n')}
 function pdfDraw(doc,s){const m=money(s),W=80,L=6,R=W-6,cw=R-L;let y=12;const r=v=>'Rs. '+Number(Math.round(v||0)).toLocaleString('en-IN');
   const t=(txt,{size=10,bold=false,align='left',color=[22,33,26]}={})=>{doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(...color);const ls=doc.splitTextToSize(String(txt),cw);ls.forEach(l=>{doc.text(l,align==='center'?W/2:L,y,{align});y+=size*.42});};
   const row=(a,b,{bold=false,size=10}={})=>{doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(22,33,26);const ls=doc.splitTextToSize(String(a),cw-26);doc.text(ls,L,y);doc.text(String(b),R,y,{align:'right'});y+=ls.length*size*.42+1};
   const hr=()=>{doc.setDrawColor(150,160,155);doc.setLineDashPattern([1,1],0);doc.line(L,y-1,R,y-1);y+=4};
   t('Salad Stories',{size:18,bold:true,align:'center',color:[29,91,52]});y+=1;t('Bill '+billNo(s)+'  ·  '+fmt(iso(new Date(s.createdAt||Date.now()))),{size:8.5,align:'center',color:[79,99,87]});y+=3;hr();
-  t(s.name+(s.phone?'  ·  '+s.phone:''),{bold:true});if(s.location)t(s.location,{size:9,color:[79,99,87]});t(`${s.plan} · ${fmt(s.start)}${s.end&&s.end!==s.start?' – '+fmt(s.end):''} · ${s.slot}${' '+whenTxt(s).replace('\u00a0',' ')}`,{size:9,color:[79,99,87]});y+=2;hr();
-  items(s).forEach(i=>{row(i.bowl,r((+i.qty||1)*(+i.price||0)),{bold:true});t(`${+i.qty||1} x ${r(i.price)} per day`,{size:8.5,color:[79,99,87]});if(i.custom)t(i.custom,{size:8.5,color:[194,54,28]});y+=2.5});if(changes(s).length){hr();t('Different bowls on these days',{size:9,bold:true});changes(s).forEach(([d,a])=>{row(fmt(d)+': '+itxt(a).replace(/×/g,'x'),r(priceOf(a)),{size:9})})}hr();
-  row(changes(s).length?'Usual per day':'Per day',r(m.perDay));row(`${m.n} delivery day${m.n>1?'s':''}`,r(m.sub));if(m.disc)row('Discount'+(m.pct?' ('+m.pct+'%)':''),'- '+r(m.disc));hr();
+  t(s.name+(s.phone?'  ·  '+s.phone:''),{bold:true});if(s.location)t(s.location,{size:9,color:[79,99,87]});t(`${s.plan} · ${s.slot} ${whenTxt(s).replace('\u00a0',' ')}`,{size:9,color:[79,99,87]});y+=2;hr();
+  billRows(s).forEach(x=>{row(rowLabel(x),x.price!=null?r(x.price):'',{bold:true,size:9.5});x.items.forEach(i=>t(`${i.bowl} x${+i.qty||1}${i.custom?' · '+i.custom:''}`,{size:8.5,color:[79,99,87]}));y+=1.5});hr();
+  row(`Subtotal (${m.n} day${m.n>1?'s':''})`,r(m.sub));if(m.disc)row('Discount'+(m.pct?' ('+m.pct+'%)':''),'- '+r(m.disc));hr();
   row('Total',r(m.total),{bold:true,size:13});y+=1;row('Payment',s.paid?'Received'+(s.payMode?' ('+s.payMode+')':''):'Pending',{bold:!s.paid});y+=4;
   t('Thank you for choosing Salad Stories!',{size:9,align:'center',color:[29,91,52]});return y+6}
 function makePdf(s){const J=window.jspdf&&window.jspdf.jsPDF;if(!J)throw new Error('nolib');let d=new J({unit:'mm',format:[80,600]});const h=pdfDraw(d,s);d=new J({unit:'mm',format:[80,Math.max(h,90)]});pdfDraw(d,s);return d.output('blob')}
@@ -471,6 +481,20 @@ $('#form').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!db){toast('C
   catch(err){toast(err&&err.code==='quota_exceeded'?'Storage is full — delete old ended orders':'Couldn’t save — check you have edit access and try again')}
   finally{busy=false;$('#saveBtn').disabled=false}};
 
+/* skip / move a day */
+let skipSub=null,skipPick=null;
+function nextFree(s){const have=new Set(datesOf(s));let d=addDays([effEnd(s)||today(),today()].sort()[1],1);for(let k=0;k<90;k++,d=addDays(d,1)){const w=new Date(d+'T00:00').getDay();if((s.plan==='Weekly'||s.plan==='Monthly')&&!days(s).includes(w))continue;if(!have.has(d))return d}return addDays(today(),1)}
+function drawSkip(){const s=subs.find(x=>x.id===skipSub);if(!s){$('#skipOv').hidden=true;skipSub=null;return}const t=today(),mv=s.moves||{};
+  const up=baseDates(s).filter(d=>d>=t&&!isSkipped(s,d)),moved=Object.entries(mv).sort((a,b)=>a[0].localeCompare(b[0]));
+  const picker=o=>`<div class="skp"><label class="l" for="skDate">New delivery date for ${fmt(o)}'s bowls</label><input type="date" id="skDate" min="${t}" value="${mv[o]||nextFree(s)}"><div class="rowb"><button class="pri" data-skmove="${o}">Move to this date</button>${mv[o]===undefined||mv[o]?`<button data-sklater="${o}">Skip — decide date later</button>`:''}<button data-skcancel="1">Cancel</button></div></div>`;
+  $('#skipBox').innerHTML=`<h3>Skip or move a day</h3><small>${esc(s.name)} · ${esc(s.plan)} · ${esc(s.slot)}</small>
+   ${moved.length?`<b style="margin-top:6px">Already changed</b>${moved.map(([o,n])=>`<div class="skr"><span>${dLab(o)} → ${n?'<b>'+dLab(n)+'</b>':'<b style="color:#c2361c">new date pending</b>'}<small>${esc(itxt(itemsOn(s,o)))}</small></span><span class="rowb"><button data-skpick="${o}">${n?'Change':'Set date'}</button><button data-skundo="${o}">Undo</button></span>${skipPick===o?picker(o):''}</div>`).join('')}`:''}
+   <b style="margin-top:6px">Upcoming deliveries</b>${up.length?up.map(d=>`<div class="skr"><span>${dLab(d)}<small>${esc(itxt(itemsOn(s,d)))}</small></span><span class="rowb"><button data-skpick="${d}">Skip</button></span>${skipPick===d?picker(d):''}</div>`).join(''):'<small>No upcoming deliveries.</small>'}`;
+  $('#skipOv').hidden=false}
+async function saveMoves(s,moves,msg){if(busy)return;busy=true;const {id,...data}=s,rev=(s.rev||0)+1;mine.add(id+':'+rev);
+  try{await db.collection('subs').doc(id).set({...data,moves,updatedAt:Date.now(),kitchenSeen:false,change:'Updated',rev});skipPick=null;toast(msg)}catch(e){toast('Couldn\u2019t save — try again')}finally{busy=false}}
+$('#skipClose').onclick=()=>{$('#skipOv').hidden=true;skipSub=null;skipPick=null};
+
 /* actions */
 async function upd(id,data,msg){if(!db||busy)return;busy=true;try{await db.collection('subs').doc(id).update(data);if(msg)toast(msg)}catch(e){toast('Couldn’t update — try again')}finally{busy=false}}
 document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
@@ -481,6 +505,14 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   if(d.dmadd){addItem({},$(`[data-dmd="${d.dmadd}"] .dme`),true);const bar=$(`[data-dmd="${d.dmadd}"] .dme .bar`);bar.parentElement.append(bar);return}
   if(d.dmdone){const a=collect($(`[data-dmd="${d.dmdone}"] .dme`)),u=collect();if(!a.length||JSON.stringify(a)===JSON.stringify(u))delete dayItems[d.dmdone];else dayItems[d.dmdone]=a;dmOpen=null;drawDM();preview();toast(dayItems[d.dmdone]?fmt(d.dmdone)+' changed':'Same as usual');return}
   if(d.copy){const t=$('#'+d.copy).textContent;try{await navigator.clipboard.writeText(t);toast('Copied — paste it in WhatsApp')}catch(err){toast('Copy was blocked — use the WhatsApp button')}return}
+  if(d.skip){skipSub=d.skip;skipPick=null;drawSkip();return}
+  if(d.skpick){skipPick=skipPick===d.skpick?null:d.skpick;drawSkip();const el=$('#skDate');if(el)el.focus();return}
+  if(d.skcancel){skipPick=null;drawSkip();return}
+  if(d.skmove||d.sklater||d.skundo){const s=subs.find(x=>x.id===skipSub);if(!s)return;const mv={...(s.moves||{})};
+    if(d.skundo){delete mv[d.skundo];await saveMoves(s,mv,fmt(d.skundo)+' is back to normal — kitchen notified')}
+    else if(d.sklater){mv[d.sklater]='';await saveMoves(s,mv,fmt(d.sklater)+' skipped — set the new date later')}
+    else{const o=d.skmove,n=$('#skDate').value;if(!n||n<today()){toast('Pick a date from today onwards');return}const taken=datesOf(s).filter(x=>x!==mv[o]);if(taken.includes(n)){toast(fmt(n)+' already has a delivery for this customer');return}if(n===o){delete mv[o]}else mv[o]=n;await saveMoves(s,mv,`${fmt(o)} moved to ${fmt(n)} — kitchen notified`)}
+    drawSkip();return}
   if(d.ack)upd(d.ack,{kitchenSeen:true,ackAt:Date.now()},'Marked as seen');
   else if(d.bill){const s=subs.find(x=>x.id===d.bill);if(s)showBill(s)}
   else if(d.paid)upd(d.paid,{paid:true,updatedAt:Date.now()},'Payment marked received');
